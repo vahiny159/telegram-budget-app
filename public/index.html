@@ -99,6 +99,23 @@
                 </div>
             </div>
 
+            <!-- Barre de comparaison vs mois précédent -->
+            <div class="comparison-bar" id="comparisonBar" style="display:none">
+                <span class="comp-label">vs mois précédent : </span>
+                <span class="comp-item" id="compIncome"></span>
+                <span class="comp-sep">&nbsp;•&nbsp;</span>
+                <span class="comp-item" id="compExpense"></span>
+            </div>
+
+            <!-- Récurrences en attente de confirmation -->
+            <div class="pending-section" id="pendingSection" style="display:none">
+                <div class="pending-header">
+                    <span>🔄 Récurrences à confirmer</span>
+                    <span class="pending-badge" id="pendingBadge">0</span>
+                </div>
+                <div id="pendingList"></div>
+            </div>
+
             <!-- Graphique donut des dépenses par catégorie -->
             <div class="chart-section" id="chartSection">
                 <div class="chart-section-header">
@@ -118,8 +135,11 @@
                 </div>
             </div>
 
-            <!-- Détail textuel par catégorie -->
-            <div class="section-title" style="margin-top:1rem">🗂️ Détail par catégorie</div>
+            <!-- Détail textuel par catégorie + bouton budgets -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-top:1rem">
+                <div class="section-title" style="margin:0">🗂️ Détail par catégorie</div>
+                <button class="budget-set-btn" onclick="openBudgetModal()">🎯 Budgets</button>
+            </div>
             <div id="categoriesList" class="categories-list">
                 <p class="empty-message">Aucune dépense enregistrée.</p>
             </div>
@@ -188,6 +208,21 @@
                     <input type="date" id="date" class="form-input" required />
                 </div>
 
+                <!-- Toggle récurrence -->
+                <div class="form-group">
+                    <label class="toggle-row">
+                        <div>
+                            <span class="form-label" style="margin:0">🔄 Transaction récurrente</span>
+                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px">Se répète
+                                automatiquement chaque mois</div>
+                        </div>
+                        <div class="toggle-switch">
+                            <input type="checkbox" id="isRecurring" />
+                            <span class="toggle-knob"></span>
+                        </div>
+                    </label>
+                </div>
+
                 <!-- Bouton de soumission -->
                 <button type="submit" class="btn btn-primary" id="submitBtn">
                     💾 Enregistrer la transaction
@@ -216,10 +251,29 @@
 
     </main>
 
-    <!-- ==============================================
-         MODAL D'ÉDITION (bottom sheet)
-         Slide-up depuis le bas, style natif mobile
-    ============================================== -->
+    <!-- MODAL BUDGETS PAR CATÉGORIE -->
+    <div class="modal-backdrop" id="budgetBackdrop" onclick="closeBudgetModal()"></div>
+    <div class="edit-modal" id="budgetModal" role="dialog" aria-label="Définir les budgets">
+        <div class="modal-handle-bar"></div>
+        <div class="modal-header">
+            <span>🎯 Budgets mensuels</span>
+            <button class="modal-close-btn" onclick="closeBudgetModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:1rem;">
+                Définissez une limite mensuelle pour chaque catégorie de dépense. Une alerte s'affiche si vous dépassez
+                le budget.
+            </p>
+            <!-- Liste des catégories avec inputs générés dynamiquement -->
+            <div id="budgetFormList"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeBudgetModal()" style="flex:1">Annuler</button>
+            <button class="btn btn-primary" onclick="saveBudgets()" style="flex:2">💾 Enregistrer</button>
+        </div>
+    </div>
+
+    <!-- MODAL D'ÉDITION (bottom sheet) -->
     <div class="modal-backdrop" id="editBackdrop" onclick="closeEditModal()"></div>
     <div class="edit-modal" id="editModal" role="dialog" aria-modal="true" aria-label="Modifier la transaction">
         <!-- Barre de glisse -->

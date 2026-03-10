@@ -24,6 +24,9 @@ let currentYear = today.getFullYear();
 // Instance du graphique Chart.js
 let expenseChart = null;
 
+// Dictionnaire des budgets par catégorie: { "Nourriture": 500000, ... }
+let userBudgets = {};
+
 // ID de la transaction en cours d'édition
 let editingTransactionId = null;
 
@@ -546,6 +549,7 @@ async function submitTransaction(event) {
     const category = document.getElementById('category').value;
     const description = document.getElementById('description').value.trim();
     const date = document.getElementById('date').value;
+    const isRecurring = document.getElementById('isRecurring') ? document.getElementById('isRecurring').checked : false;
 
     // ---- Validation côté client ----
     if (!type) {
@@ -581,7 +585,7 @@ async function submitTransaction(event) {
                 'x-telegram-init-data': telegramInitData,
                 'x-telegram-user-id': telegramUserId  // Fallback mode dev
             },
-            body: JSON.stringify({ type, amount: parseFloat(amount), category, description, date })
+            body: JSON.stringify({ type, amount: parseFloat(amount), category, description, date, is_recurring: isRecurring })
         });
 
         const data = await response.json();
@@ -590,6 +594,9 @@ async function submitTransaction(event) {
             // Succès : affiche le message et réinitialise le formulaire
             showMessage('success', '✅ Transaction enregistrée avec succès !');
             document.getElementById('transactionForm').reset();
+            if (document.getElementById('isRecurring')) {
+                document.getElementById('isRecurring').checked = false;
+            }
             setDefaultDate();        // Remet la date d'aujourd'hui
             selectType('income');    // Remet le type à "revenu"
 
@@ -645,10 +652,34 @@ async function loadDashboard() {
         };
         const monthParams = `month=${currentMonth}&year=${currentYear}`;
 
-        // === Chargement du résumé financier ===
-        const summaryRes = await fetch(`/api/summary?${monthParams}`, { headers: authHeaders });
-        const summary = await summaryRes.json();
+        // Calcul du mois précédent pour la comparaison
+        let prevMonth = currentMonth - 1;
+        let prevYear = currentYear;
+        if (prevMonth === 0) { prevMonth = 12; prevYear--; }
+        const prevMonthParams = `month=${prevMonth}&year=${prevYear}`;
 
+        // === Chargement en parallèle ===
+        const [summaryRes, prevSummaryRes, catRes, budgetRes, pendingRes] = await Promise.all([
+            fetch(`/api/summary?${monthParams}`, { headers: authHeaders }),
+            fetch(`/api/summary?${prevMonthParams}`, { headers: authHeaders }),
+            fetch(`/api/categories-summary?${monthParams}`, { headers: authHeaders }),
+            fetch('/api/budgets', { headers: authHeaders }),
+            fetch(`/api/pending-recurring?${monthParams}`, { headers: authHeaders })
+        ]);
+
+        const summary = await summaryRes.json();
+        const prevSummary = await prevSummaryRes.json();
+        const categories = await catRes.json();
+        const budgets = await budgetRes.json();
+        const pending = await pendingRes.json();
+
+        // Stockage global des budgets (pour y accéder depuis d'autres fonctions)
+        userBudgets = {};
+        if (Array.isArray(budgets)) {
+            budgets.forEach(b => userBudgets[b.category] = parseFloat(b.monthly_limit));
+        }
+
+        // --- Mise à jour du résumé ---
         if (summaryRes.ok) {
             document.getElementById('totalIncome').textContent = formatAmount(summary.totalIncome);
             document.getElementById('totalExpenses').textContent = formatAmount(summary.totalExpenses);
@@ -662,10 +693,71 @@ async function loadDashboard() {
             }
         }
 
-        // === Chargement des catégories ===
-        const catRes = await fetch(`/api/categories-summary?${monthParams}`, { headers: authHeaders });
-        const categories = await catRes.json();
+        // --- Mise à jour de la comparaison avec le mois précédent ---
+        const compBar = document.getElementById('comparisonBar');
+        if (prevSummaryRes.ok && (prevSummary.totalIncome > 0 || prevSummary.totalExpenses > 0)) {
+            compBar.style.display = 'flex';
 
+            const incDiff = summary.totalIncome - prevSummary.totalIncome;
+            const expDiff = summary.totalExpenses - prevSummary.totalExpenses;
+
+            const compIncome = document.getElementById('compIncome');
+            const compExpense = document.getElementById('compExpense');
+
+            // Revenus
+            if (incDiff > 0) {
+                compIncome.textContent = 'Revenus ▲ ' + formatAmount(incDiff);
+                compIncome.className = 'comp-item positive';
+            } else if (incDiff < 0) {
+                compIncome.textContent = 'Revenus ▼ ' + formatAmount(Math.abs(incDiff));
+                compIncome.className = 'comp-item negative'; // Moins de revenus = négatif
+            } else {
+                compIncome.textContent = 'Revenus =';
+                compIncome.className = 'comp-item neutral';
+            }
+
+            // Dépenses
+            if (expDiff > 0) {
+                compExpense.textContent = 'Dépenses ▲ ' + formatAmount(expDiff);
+                compExpense.className = 'comp-item negative'; // Plus de dépenses = négatif
+            } else if (expDiff < 0) {
+                compExpense.textContent = 'Dépenses ▼ ' + formatAmount(Math.abs(expDiff));
+                compExpense.className = 'comp-item positive'; // Moins de dépenses = positif
+            } else {
+                compExpense.textContent = 'Dépenses =';
+                compExpense.className = 'comp-item neutral';
+            }
+        } else {
+            compBar.style.display = 'none';
+        }
+
+        // --- Mise à jour des récurrences en attente ---
+        const pendingSection = document.getElementById('pendingSection');
+        if (pendingRes.ok && pending.length > 0) {
+            pendingSection.style.display = 'block';
+            document.getElementById('pendingBadge').textContent = pending.length;
+
+            document.getElementById('pendingList').innerHTML = pending.map(tx => `
+                <div class="pending-item">
+                    <div>
+                        <span style="font-weight:600">${tx.category}</span>
+                        <div style="font-size:0.7rem; color:var(--text-secondary)">${tx.description || 'Transaction récurrente'}</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:0.5rem">
+                        <span class="${tx.type === 'income' ? 'income' : 'expense'}" style="font-weight:600">
+                            ${formatAmount(tx.amount)}
+                        </span>
+                        <button class="btn-edit" onclick="applyRecurring(${tx.id})" style="background:var(--accent); color:white; padding:0.2rem 0.5rem; border-radius:4px; font-size:0.75rem;">
+                            Ajouter
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            pendingSection.style.display = 'none';
+        }
+
+        // --- Mise à jour des catégories ---
         displayCategories(categories, summary.totalExpenses);
 
     } catch (err) {
@@ -691,20 +783,46 @@ function displayCategories(categories, totalExpenses) {
     }
 
     container.innerHTML = categories.map(cat => {
-        const percentage = totalExpenses > 0
-            ? Math.round((parseFloat(cat.total) / parseFloat(totalExpenses)) * 100)
-            : 0;
+        const total = parseFloat(cat.total);
+        const limit = userBudgets[cat.category];
+
+        let percentage = 0;
+        let barColor = 'var(--accent)';
+        let budgetInfoHTML = '';
+
+        if (limit) {
+            // Calcul par rapport au budget défini
+            percentage = Math.round((total / limit) * 100);
+            if (percentage > 100) {
+                percentage = 100;
+                barColor = 'var(--color-expense)'; // Rouge si dépassé
+            } else if (percentage > 85) {
+                barColor = '#f59e0b'; // Orange si presque dépassé
+            }
+            const overage = total - limit;
+            budgetInfoHTML = `
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px;">
+                    Budget : ${formatAmount(total)} / ${formatAmount(limit)}
+                </div>
+                ${overage > 0 ? `<div class="budget-overage">⚠️ Dépassement de ${formatAmount(overage)}</div>` : ''}
+            `;
+        } else {
+            // Calcul par rapport au total des dépenses (comportement par défaut)
+            percentage = totalExpenses > 0 ? Math.round((total / parseFloat(totalExpenses)) * 100) : 0;
+            budgetInfoHTML = `<div style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">${percentage}% des dépenses</div>`;
+        }
+
         return `
             <div class="category-item">
                 <div style="flex: 1;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span class="category-name">${cat.category}</span>
-                        <span class="category-amount">${formatAmount(cat.total)}</span>
+                        <span class="category-amount" style="${limit && total > limit ? 'color:var(--color-expense)' : ''}">${formatAmount(total)}</span>
                     </div>
                     <div class="category-bar-container">
-                        <div class="category-bar" style="width:${percentage}%"></div>
+                        <div class="category-bar" style="width:${percentage}%; background-color:${barColor}"></div>
                     </div>
-                    <div style="font-size:0.7rem; color:#94a3b8; margin-top:2px;">${percentage}% des dépenses</div>
+                    ${budgetInfoHTML}
                 </div>
             </div>`;
     }).join('');
@@ -759,12 +877,14 @@ function displayTransactions(transactions) {
         const amountClass = isIncome ? 'income' : 'expense';
         const formattedDate = formatDate(tx.date);
 
+        const recurIcon = tx.is_recurring ? '🔄 ' : '';
+
         return `
             <div class="transaction-item" id="tx-${tx.id}">
                 <span class="transaction-icon">${icon}</span>
                 <div class="transaction-info">
                     <div class="transaction-category">${tx.category}</div>
-                    <div class="transaction-description">${tx.description || 'Aucune description'}</div>
+                    <div class="transaction-description">${recurIcon}${tx.description || 'Aucune description'}</div>
                     <div class="transaction-date">📅 ${formattedDate}</div>
                 </div>
                 <div style="display:flex; align-items:center; gap:0.4rem;">
@@ -843,7 +963,153 @@ async function deleteTransaction(id) {
 }
 
 // =========================================
-// FONCTIONS UTILITAIRES
+// GESTION DES BUDGETS PAR CATÉGORIE
+// =========================================
+
+/**
+ * Ouvre le modal de paramétrage des budgets.
+ * Génère un champ pour chaque catégorie de dépense.
+ */
+function openBudgetModal() {
+    const listContainer = document.getElementById('budgetFormList');
+    const categories = CATEGORIES.expense;
+
+    listContainer.innerHTML = categories.map(cat => {
+        const currentLimit = userBudgets[cat] || '';
+        return `
+            <div class="budget-row">
+                <label>${cat}</label>
+                <div class="budget-input-wrapper">
+                    <input type="number" id="budget_${cat}" value="${currentLimit}" placeholder="0" min="0" step="1000">
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    document.getElementById('budgetBackdrop').classList.add('active');
+    document.getElementById('budgetModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
+    }
+}
+
+/**
+ * Ferme le modal des budgets.
+ */
+function closeBudgetModal() {
+    document.getElementById('budgetBackdrop').classList.remove('active');
+    document.getElementById('budgetModal').classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+/**
+ * Sauvegarde les budgets modifiés via l'API.
+ */
+async function saveBudgets() {
+    if (!telegramUserId) return;
+    const btn = document.querySelector('#budgetModal .btn-primary');
+    btn.disabled = true;
+    btn.textContent = '⏳ ...';
+
+    try {
+        const categories = CATEGORIES.expense;
+        for (const cat of categories) {
+            const input = document.getElementById(`budget_${cat}`);
+            const limit = parseFloat(input.value);
+
+            // Si vide ou 0, on supprime le budget (DELETE)
+            if (!limit || limit <= 0) {
+                if (userBudgets[cat]) { // Si existait avant
+                    await fetch(`/api/budgets/${encodeURIComponent(cat)}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'x-telegram-init-data': telegramInitData,
+                            'x-telegram-user-id': telegramUserId
+                        }
+                    });
+                }
+                delete userBudgets[cat];
+            }
+            // Sinon on crée/met à jour (POST)
+            else {
+                await fetch('/api/budgets', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-telegram-init-data': telegramInitData,
+                        'x-telegram-user-id': telegramUserId
+                    },
+                    body: JSON.stringify({ category: cat, monthly_limit: limit })
+                });
+                userBudgets[cat] = limit;
+            }
+        }
+
+        if (window.Telegram?.WebApp?.HapticFeedback) {
+            window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+        }
+        closeBudgetModal();
+        loadDashboard(); // Recharge le dashboard pour MAJ des barres
+
+    } catch (err) {
+        console.error('Erreur saveBudgets:', err);
+        alert('Erreur lors de la sauvegarde');
+    }
+
+    btn.disabled = false;
+    btn.textContent = '💾 Enregistrer';
+}
+
+// =========================================
+// ACTION : APPLIQUER RÉCURRENCE
+// =========================================
+
+/**
+ * Copie une transaction récurrente pendante sur le mois actuel.
+ * @param {number} txId - ID de la transaction à dupliquer
+ */
+async function applyRecurring(txId) {
+    if (!telegramUserId) return;
+
+    // Confirmer rapidement ? Non on clique direct c'est plus UX
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
+    }
+
+    try {
+        const response = await fetch('/api/apply-recurring', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            },
+            body: JSON.stringify({
+                transaction_id: txId,
+                month: currentMonth,
+                year: currentYear
+            })
+        });
+
+        if (response.ok) {
+            if (window.Telegram?.WebApp?.HapticFeedback) {
+                window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+            }
+            // Recharge UI
+            loadDashboard();
+            loadTransactions();
+        } else {
+            console.error('Erreur API recurrente');
+        }
+    } catch (err) {
+        console.error('Erreur applyRecurring:', err);
+    }
+}
+
+// =========================================
+// UTILITAIRES
 // =========================================
 
 /**

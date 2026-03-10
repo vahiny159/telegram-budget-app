@@ -198,22 +198,41 @@ app.use('/api/', telegramAuthMiddleware);
 // INITIALISATION DE LA BASE DE DONNÉES
 // =========================================
 async function initDatabase() {
-    const createTableQuery = `
-        CREATE TABLE IF NOT EXISTS transactions (
-            id SERIAL PRIMARY KEY,
-            telegram_user_id BIGINT NOT NULL,
-            type VARCHAR(10) NOT NULL CHECK (type IN ('income', 'expense')),
-            amount DECIMAL(12, 2) NOT NULL CHECK (amount > 0),
-            category VARCHAR(100) NOT NULL,
-            description TEXT,
-            date DATE NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE INDEX IF NOT EXISTS idx_transactions_telegram_user_id ON transactions(telegram_user_id);
-    `;
     try {
-        await pool.query(createTableQuery);
-        console.log('✅ Table "transactions" prête');
+        // Table des transactions
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS transactions (
+                id SERIAL PRIMARY KEY,
+                telegram_user_id BIGINT NOT NULL,
+                type VARCHAR(10) NOT NULL CHECK (type IN ('income', 'expense')),
+                amount DECIMAL(12, 2) NOT NULL CHECK (amount > 0),
+                category VARCHAR(100) NOT NULL,
+                description TEXT,
+                date DATE NOT NULL,
+                is_recurring BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_transactions_telegram_user_id ON transactions(telegram_user_id);
+        `);
+
+        // Ajout de la colonne is_recurring si elle n'existe pas (migration)
+        await pool.query(`
+            ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN DEFAULT FALSE;
+        `);
+
+        // Table des budgets mensuels par catégorie
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS budgets (
+                id SERIAL PRIMARY KEY,
+                telegram_user_id BIGINT NOT NULL,
+                category VARCHAR(100) NOT NULL,
+                monthly_limit DECIMAL(12,2) NOT NULL CHECK (monthly_limit > 0),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(telegram_user_id, category)
+            );
+        `);
+
+        console.log('✅ Tables prêtes (transactions, budgets)');
     } catch (err) {
         console.error('❌ Erreur initialisation base de données:', err.message);
     }
@@ -431,6 +450,143 @@ app.get('/api/categories-summary', async (req, res) => {
 app.get('/health', (req, res) => {
     res.json({ status: 'OK', message: 'Budget Planner API en ligne' });
 });
+
+// =========================================
+// BUDGETS PAR CATÉGORIE
+// =========================================
+
+// GET /api/budgets — Récupère tous les budgets de l'utilisateur
+app.get('/api/budgets', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT category, monthly_limit FROM budgets WHERE telegram_user_id = $1 ORDER BY category',
+            [req.telegramUserId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Erreur GET /api/budgets:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// POST /api/budgets — Crée ou met à jour le budget d'une catégorie (UPSERT)
+app.post('/api/budgets', async (req, res) => {
+    const { category, monthly_limit } = req.body;
+    if (!category || !monthly_limit || parseFloat(monthly_limit) <= 0) {
+        return res.status(400).json({ error: 'Données invalides' });
+    }
+    try {
+        const result = await pool.query(
+            `INSERT INTO budgets (telegram_user_id, category, monthly_limit)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (telegram_user_id, category)
+             DO UPDATE SET monthly_limit = EXCLUDED.monthly_limit
+             RETURNING *`,
+            [req.telegramUserId, category, parseFloat(monthly_limit)]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Erreur POST /api/budgets:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// DELETE /api/budgets/:category — Supprime le budget d'une catégorie
+app.delete('/api/budgets/:category', async (req, res) => {
+    const { category } = req.params;
+    try {
+        await pool.query(
+            'DELETE FROM budgets WHERE telegram_user_id = $1 AND category = $2',
+            [req.telegramUserId, decodeURIComponent(category)]
+        );
+        res.json({ message: 'Budget supprimé' });
+    } catch (err) {
+        console.error('Erreur DELETE /api/budgets:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// =========================================
+// TRANSACTIONS RÉCURRENTES
+// =========================================
+
+// GET /api/pending-recurring?month=&year=
+// Retourne les transactions récurrentes du mois PRÉCÉDENT non encore appliquées ce mois
+app.get('/api/pending-recurring', async (req, res) => {
+    const { month, year } = req.query;
+    if (!month || !year) return res.json([]);
+
+    // Calcul du mois précédent
+    let prevMonth = parseInt(month) - 1;
+    let prevYear = parseInt(year);
+    if (prevMonth === 0) { prevMonth = 12; prevYear--; }
+
+    try {
+        // Récurrentes du mois précédent
+        const prev = await pool.query(`
+            SELECT * FROM transactions
+            WHERE telegram_user_id = $1
+              AND is_recurring = TRUE
+              AND EXTRACT(MONTH FROM date) = $2
+              AND EXTRACT(YEAR  FROM date) = $3
+        `, [req.telegramUserId, prevMonth, prevYear]);
+
+        if (prev.rows.length === 0) return res.json([]);
+
+        // Filtre celles qui n'ont pas encore été ajoutées ce mois
+        const pending = [];
+        for (const tx of prev.rows) {
+            const exists = await pool.query(`
+                SELECT id FROM transactions
+                WHERE telegram_user_id = $1
+                  AND is_recurring = TRUE
+                  AND category = $2 AND type = $3
+                  AND EXTRACT(MONTH FROM date) = $4
+                  AND EXTRACT(YEAR  FROM date) = $5
+                LIMIT 1
+            `, [req.telegramUserId, tx.category, tx.type, month, year]);
+            if (exists.rows.length === 0) pending.push(tx);
+        }
+        res.json(pending);
+    } catch (err) {
+        console.error('Erreur GET /api/pending-recurring:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// POST /api/apply-recurring — Crée une copie de la transaction pour le mois en cours
+app.post('/api/apply-recurring', async (req, res) => {
+    const { transaction_id, month, year } = req.body;
+    if (!transaction_id || !month || !year) {
+        return res.status(400).json({ error: 'Paramètres manquants' });
+    }
+    try {
+        // Récupère la transaction originale
+        const orig = await pool.query(
+            'SELECT * FROM transactions WHERE id = $1 AND telegram_user_id = $2',
+            [transaction_id, req.telegramUserId]
+        );
+        if (orig.rows.length === 0) return res.status(404).json({ error: 'Non trouvé' });
+        const tx = orig.rows[0];
+
+        // Construit la date dans le mois cible (même jour, ajusté si nécessaire)
+        const origDay = new Date(String(tx.date).substring(0, 10) + 'T12:00:00').getDate();
+        const daysInTarget = new Date(parseInt(year), parseInt(month), 0).getDate();
+        const day = Math.min(origDay, daysInTarget);
+        const newDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+        const result = await pool.query(
+            `INSERT INTO transactions (telegram_user_id, type, amount, category, description, date, is_recurring)
+             VALUES ($1, $2, $3, $4, $5, $6, TRUE) RETURNING *`,
+            [req.telegramUserId, tx.type, tx.amount, tx.category, tx.description, newDate]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Erreur POST /api/apply-recurring:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 
 // =========================================
 // DÉMARRAGE DU SERVEUR

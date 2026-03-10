@@ -891,6 +891,195 @@ body {
     background: rgba(99, 102, 241, 0.15);
 }
 
+/* =========================================
+   COMPARAISON MOIS PRÉCÉDENT
+   ========================================= */
+.comparison-bar {
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    margin-top: -0.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-secondary);
+}
+
+.comp-label {
+    opacity: 0.7;
+}
+
+.comp-item.positive {
+    color: var(--color-income);
+    font-weight: 600;
+}
+
+.comp-item.negative {
+    color: var(--color-expense);
+    font-weight: 600;
+}
+
+.comp-item.neutral {
+    color: var(--text-secondary);
+}
+
+/* =========================================
+   RÉCURRENCES EN ATTENTE
+   ========================================= */
+.pending-section {
+    background: rgba(245, 158, 11, 0.1);
+    /* orange léger */
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.pending-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #f59e0b;
+    margin-bottom: 0.75rem;
+}
+
+.pending-badge {
+    background: #f59e0b;
+    color: #fff;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 10px;
+}
+
+.pending-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-secondary);
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    margin-bottom: 0.4rem;
+    font-size: 0.8rem;
+}
+
+/* =========================================
+   TOGGLE SWITCH (Récurrence)
+   ========================================= */
+.toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+}
+
+.toggle-switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-knob {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-tertiary);
+    transition: .3s;
+    border-radius: 24px;
+}
+
+.toggle-knob:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .3s;
+    border-radius: 50%;
+}
+
+input:checked+.toggle-knob {
+    background-color: var(--accent);
+}
+
+input:checked+.toggle-knob:before {
+    transform: translateX(20px);
+}
+
+/* =========================================
+   BUDGET SETTINGS MODAL
+   ========================================= */
+.budget-set-btn {
+    background: var(--bg-tertiary);
+    border: none;
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.2s;
+}
+
+.budget-set-btn:hover {
+    background: var(--accent);
+}
+
+.budget-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+}
+
+.budget-row label {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    flex: 1;
+}
+
+.budget-input-wrapper {
+    position: relative;
+    width: 120px;
+}
+
+.budget-input-wrapper input {
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.budget-input-wrapper input:focus {
+    border-color: var(--accent);
+    outline: none;
+}
+
+/* Alerte de dépassement de budget */
+.budget-overage {
+    color: var(--color-expense);
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
 
 
 /* =========================================
