@@ -39,6 +39,7 @@ const CHART_COLORS = [
 // Catégories disponibles selon le type de transaction
 const CATEGORIES = {
     income: [
+        'Pharmacie',
         'Salaire',
         'Freelance',
         'Loyer perçu',
@@ -227,7 +228,7 @@ function initChart() {
             datasets: [{
                 data: [],
                 backgroundColor: CHART_COLORS,
-                borderColor: '#0f172a',   // = --bg-primary, crée des séparations nettes
+                borderColor: 'var(--bg-primary)',   // Crée des séparations nettes
                 borderWidth: 2,
                 hoverOffset: 10,           // Le segment s'agrandit au survol
                 hoverBorderWidth: 0
@@ -554,10 +555,8 @@ function checkBudgetHint() {
     }
 
     // Calcul du total déjà dépensé ce mois pour cette catégorie
+    // (utilise les variables globales currentMonth/currentYear pour être cohérent avec la vue)
     let spentThisMonth = 0;
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
 
     allTransactions.forEach(tx => {
         if (tx.type === 'expense' && tx.category === category) {
@@ -897,6 +896,7 @@ async function loadDashboard() {
         displayCategories(safeCategories, safeSummary.totalExpenses);
 
         await loadGoal();
+        loadPharmacieCard(safeCategories, safeSummary);
 
     } catch (err) {
         console.error('Erreur chargement dashboard:', err);
@@ -1323,6 +1323,130 @@ async function applyRecurring(txId) {
 }
 
 // =========================================
+// GAINS PHARMACIE
+// =========================================
+
+/**
+ * Met à jour la carte Pharmacie sur le dashboard.
+ * @param {Array} categories - Tableau des catégories du mois (depuis loadDashboard)
+ * @param {Object} safeSummary - { totalIncome, totalExpenses, balance }
+ */
+function loadPharmacieCard(categories, safeSummary) {
+    // Calcule le total pharmacie depuis allTransactions (income, catégorie Pharmacie)
+    // allTransactions est déjà filtré par le mois/année courants (chargé par loadTransactions)
+    const pharmaTotal = allTransactions
+        .filter(tx => tx.type === 'income' && tx.category === 'Pharmacie')
+        .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+
+    document.getElementById('pharmacieTotal').textContent = formatAmount(pharmaTotal);
+
+    // Moyenne journalière basée sur le nb de jours écoulés dans le mois affiché
+    const today = new Date();
+    const dayOfMonth = (currentMonth === today.getMonth() + 1 && currentYear === today.getFullYear())
+        ? today.getDate()
+        : new Date(currentYear, currentMonth, 0).getDate(); // Mois complet si passé
+
+    const pharmaAvg = dayOfMonth > 0 ? pharmaTotal / dayOfMonth : 0;
+    document.getElementById('pharmacieAvg').textContent = formatAmount(Math.round(pharmaAvg));
+
+    // Calcul du déficit : (dépenses du mois) - (revenus hors pharmacie + gains pharmacie)
+    // Autrement dit : déficit = totalExpenses - totalIncome
+    // Si négatif → elle dépense plus qu'elle ne gagne (pharmacie incluse) → il faut combler
+    const deficit = safeSummary.totalExpenses - safeSummary.totalIncome;
+    const badge = document.getElementById('pharmacieDeficitBadge');
+    const icon = document.getElementById('pharmacieDeficitIcon');
+    const text = document.getElementById('pharmacieDeficitText');
+
+    if (deficit <= 0) {
+        badge.className = 'deficit-badge deficit-ok';
+        icon.textContent = '✅';
+        const surplus = Math.abs(deficit);
+        text.textContent = surplus > 0
+            ? `Budget équilibré ! Surplus de ${formatAmount(surplus)} ce mois.`
+            : 'Budget parfaitement équilibré !';
+    } else {
+        badge.className = 'deficit-badge deficit-gap';
+        icon.textContent = '⚠️';
+        text.textContent = `Il manque encore ${formatAmount(deficit)} pour couvrir les dépenses ce mois.`;
+    }
+}
+
+function openPharmacieModal() {
+    const dateInput = document.getElementById('pharmacieDate');
+    dateInput.value = new Date().toISOString().split('T')[0];
+    document.getElementById('pharmacieAmount').value = '';
+    document.getElementById('pharmacieMessage').className = 'form-message hidden';
+    document.getElementById('pharmacieBackdrop').classList.add('active');
+    document.getElementById('pharmacieModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closePharmacieModal() {
+    document.getElementById('pharmacieBackdrop').classList.remove('active');
+    document.getElementById('pharmacieModal').classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+async function submitPharmacieGain() {
+    const amount = document.getElementById('pharmacieAmount').value;
+    const date = document.getElementById('pharmacieDate').value;
+    const msgEl = document.getElementById('pharmacieMessage');
+    const btn = document.getElementById('pharmacieSubmitBtn');
+
+    if (!amount || parseFloat(amount) <= 0) {
+        msgEl.textContent = 'Veuillez entrer un montant valide.';
+        msgEl.className = 'form-message error';
+        return;
+    }
+    if (!date) {
+        msgEl.textContent = 'Veuillez choisir une date.';
+        msgEl.className = 'form-message error';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⏳...';
+
+    try {
+        const response = await fetch('/api/transactions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            },
+            body: JSON.stringify({
+                type: 'income',
+                amount: parseFloat(amount),
+                category: 'Pharmacie',
+                description: 'Gain journalier pharmacie',
+                date,
+                is_recurring: false
+            })
+        });
+
+        if (response.ok) {
+            closePharmacieModal();
+            if (window.Telegram?.WebApp?.HapticFeedback) {
+                window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+            }
+            loadDashboard();
+            loadTransactions();
+        } else {
+            const data = await response.json();
+            msgEl.textContent = '❌ ' + (data.error || 'Erreur serveur.');
+            msgEl.className = 'form-message error';
+        }
+    } catch (err) {
+        msgEl.textContent = '❌ Erreur de connexion.';
+        msgEl.className = 'form-message error';
+    }
+
+    btn.disabled = false;
+    btn.textContent = '💊 Enregistrer';
+}
+
+// =========================================
 // OBJECTIF D'ÉPARGNE (TIRELIRE)
 // =========================================
 let currentGoalId = null;
@@ -1341,7 +1465,7 @@ async function loadGoal() {
         const goalCard = document.getElementById('goalCard');
         const btnCreate = document.getElementById('btnCreateGoal');
 
-        if (goals && goals.length > 0) {
+        if (Array.isArray(goals) && goals.length > 0) {
             const goal = goals[0]; // Prend le plus récent
             currentGoalId = goal.id;
 
@@ -1352,9 +1476,38 @@ async function loadGoal() {
             document.getElementById('goalTarget').textContent = formatAmount(goal.target_amount);
             document.getElementById('goalSaved').textContent = formatAmount(goal.current_amount);
 
-            const pct = Math.min((goal.current_amount / goal.target_amount) * 100, 100).toFixed(1);
+            const pctRaw = goal.target_amount > 0
+                ? (goal.current_amount / goal.target_amount) * 100
+                : 0;
+            const pct = Math.min(pctRaw, 100).toFixed(1);
+
+            document.getElementById('goalName').textContent = goal.name;
+            document.getElementById('goalTarget').textContent = formatAmount(goal.target_amount);
+            document.getElementById('goalSaved').textContent = formatAmount(goal.current_amount);
             document.getElementById('goalPct').textContent = pct + '%';
             document.getElementById('goalBar').style.width = pct + '%';
+
+            // Message de motivation selon l'avancement
+            const remaining = goal.target_amount - goal.current_amount;
+            const motivEl = document.getElementById('goalMotivation');
+            if (motivEl) {
+                if (pctRaw >= 100) {
+                    motivEl.textContent = '🎉 Objectif atteint ! Félicitations !';
+                    motivEl.style.color = '#059669';
+                } else if (pctRaw >= 75) {
+                    motivEl.textContent = `🔥 Plus que ${formatAmount(remaining)} — vous y êtes presque !`;
+                    motivEl.style.color = '#d97706';
+                } else if (pctRaw >= 50) {
+                    motivEl.textContent = `💪 À mi-chemin ! Encore ${formatAmount(remaining)} à épargner.`;
+                    motivEl.style.color = 'var(--accent)';
+                } else if (pctRaw > 0) {
+                    motivEl.textContent = `🌱 Bon départ ! Il reste ${formatAmount(remaining)} à atteindre.`;
+                    motivEl.style.color = 'var(--text-secondary)';
+                } else {
+                    motivEl.textContent = `🎯 Chaque Ariary compte ! Objectif : ${formatAmount(goal.target_amount)}`;
+                    motivEl.style.color = 'var(--text-secondary)';
+                }
+            }
         } else {
             currentGoalId = null;
             goalCard.style.display = 'none';

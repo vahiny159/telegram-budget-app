@@ -604,7 +604,7 @@ app.post('/api/apply-recurring', async (req, res) => {
 // =========================================
 
 // GET /api/goals — Récupérer le ou les objectifs
-app.get('/api/goals', async (req, res) => {
+app.get('/api/goals', telegramAuthMiddleware, async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT * FROM goals WHERE telegram_user_id = $1 ORDER BY created_at DESC',
@@ -618,7 +618,7 @@ app.get('/api/goals', async (req, res) => {
 });
 
 // POST /api/goals — Créer un nouvel objectif
-app.post('/api/goals', async (req, res) => {
+app.post('/api/goals', telegramAuthMiddleware, async (req, res) => {
     const { name, target_amount } = req.body;
     if (!name || !target_amount || parseFloat(target_amount) <= 0) {
         return res.status(400).json({ error: 'Données invalides' });
@@ -637,7 +637,7 @@ app.post('/api/goals', async (req, res) => {
 });
 
 // PUT /api/goals/:id/add — Ajouter des fonds à l'objectif
-app.put('/api/goals/:id/add', async (req, res) => {
+app.put('/api/goals/:id/add', telegramAuthMiddleware, async (req, res) => {
     const { amount } = req.body;
     const { id } = req.params;
 
@@ -680,7 +680,7 @@ app.put('/api/goals/:id/add', async (req, res) => {
 });
 
 // DELETE /api/goals/:id — Supprimer un objectif
-app.delete('/api/goals/:id', async (req, res) => {
+app.delete('/api/goals/:id', telegramAuthMiddleware, async (req, res) => {
     try {
         await pool.query(
             'DELETE FROM goals WHERE id = $1 AND telegram_user_id = $2',

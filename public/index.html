@@ -80,43 +80,104 @@
         --------------------------- -->
         <section id="tab-content-dashboard" class="tab-content active">
 
-            <!-- Carte : Objectif (Tirelire) -->
             <button class="btn btn-secondary" id="btnCreateGoal" onclick="openCreateGoalModal()"
-                style="width:100%; margin-bottom: 0.75rem; font-weight: 600; font-size: 0.85rem; border: 1px dashed var(--accent); color: var(--accent);">
-                <span style="font-size: 1.2rem; margin-right: 8px;">🎯</span> Créer un objectif d'épargne
+                style="width:100%; margin-bottom: 0.75rem; font-weight: 600; font-size: 0.85rem; border: 2px dashed var(--accent); color: var(--accent); padding: 1rem; border-radius: var(--radius);">
+                <span style="font-size: 1.5rem; display:block; margin-bottom:4px;">🎯</span>
+                Créer un objectif d'épargne
             </button>
 
-            <div class="card goal-card" id="goalCard" style="display:none; margin-bottom: 0.75rem;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem">
-                    <div class="card-label"
-                        style="display:flex; align-items:center; color: var(--accent); font-weight: 700; font-size: 0.85rem;">
-                        <span style="font-size: 1.2rem; margin-right: 6px;">🎯</span>
-                        <span id="goalName">Mon Objectif</span>
+            <!-- Carte Objectif d'épargne — Design mis en avant -->
+            <div class="card goal-card goal-card-hero" id="goalCard" style="display:none; margin-bottom: 0.75rem;">
+
+                <!-- En-tête -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <span style="font-size:1.8rem;">🎯</span>
+                        <div>
+                            <div style="font-weight:800; font-size:1.05rem; color:var(--accent);" id="goalName">Mon
+                                Objectif</div>
+                            <div style="font-size:0.72rem; color:var(--text-secondary);">Objectif d'épargne</div>
+                        </div>
                     </div>
                     <button onclick="deleteGoal()" title="Supprimer l'objectif"
-                        style="background:none; border:none; cursor:pointer; font-size:1.1rem; color: var(--color-expense);">✕</button>
+                        style="background:var(--color-expense-bg); border:none; cursor:pointer; width:28px; height:28px; border-radius:50%; font-size:0.8rem; color:var(--color-expense); display:flex; align-items:center; justify-content:center;">✕</button>
                 </div>
 
-                <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+                <!-- Montants -->
+                <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:0.6rem;">
                     <div>
-                        <span id="goalSaved" style="font-size: 1.4rem; font-weight: 700; color: var(--text-primary)">0
-                            Ar</span>
-                        <span style="font-size: 0.8rem; color: var(--text-secondary)"> / <span id="goalTarget">0
-                                Ar</span></span>
+                        <div
+                            style="font-size:0.72rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em;">
+                            Épargné</div>
+                        <div id="goalSaved"
+                            style="font-size:1.75rem; font-weight:800; color:var(--text-primary); line-height:1.1;">0 Ar
+                        </div>
                     </div>
-                    <span id="goalPct" style="font-size: 1.2rem; font-weight: 600; color: var(--accent)">0%</span>
+                    <div style="text-align:right;">
+                        <div
+                            style="font-size:0.72rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em;">
+                            Objectif</div>
+                        <div id="goalTarget" style="font-size:1rem; font-weight:600; color:var(--text-secondary);">0 Ar
+                        </div>
+                    </div>
                 </div>
 
-                <div class="category-bar-container"
-                    style="height: 8px; margin-top: 0.75rem; background: var(--bg-tertiary); border-radius: 4px;">
-                    <div id="goalBar" class="category-bar"
-                        style="width:0%; background-color:var(--accent); border-radius: 4px;"></div>
+                <!-- Barre de progression grande et animée -->
+                <div
+                    style="background:var(--bg-tertiary); border-radius:8px; height:14px; overflow:hidden; margin-bottom:0.5rem; box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);">
+                    <div id="goalBar"
+                        style="height:100%; width:0%; background: linear-gradient(90deg, var(--accent), #f472b6); border-radius:8px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1);">
+                    </div>
                 </div>
 
+                <!-- Pourcentage + message de motivation -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <span id="goalMotivation"
+                        style="font-size:0.8rem; color:var(--text-secondary); font-style:italic;">Chaque Ariary compte !
+                        💪</span>
+                    <span id="goalPct" style="font-size:1.1rem; font-weight:800; color:var(--accent);">0%</span>
+                </div>
+
+                <!-- Bouton principal -->
                 <button class="btn btn-primary" onclick="openAddFundsModal()"
-                    style="margin-top: 1rem; width: 100%; font-size: 0.85rem; padding: 0.6rem;">
-                    ➕ Mettre de l'argent de côté
+                    style="font-size:0.9rem; padding:0.75rem; border-radius:var(--radius-sm);">
+                    💰 Mettre de l'argent de côté
                 </button>
+            </div>
+
+            <!-- Carte : Gains de la Pharmacie -->
+            <div class="card pharmacie-card" id="pharmacieCard" style="margin-bottom: 0.75rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <span style="font-size:1.4rem;">💊</span>
+                        <div>
+                            <div style="font-weight:700; font-size:0.88rem; color:var(--text-primary)">Gains Pharmacie
+                            </div>
+                            <div style="font-size:0.72rem; color:var(--text-secondary)">Ce mois-ci</div>
+                        </div>
+                    </div>
+                    <button onclick="openPharmacieModal()" class="btn-pharmacie-add" title="Ajouter un gain">
+                        ➕ Gain du jour
+                    </button>
+                </div>
+
+                <!-- Chiffres clés -->
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.75rem;">
+                    <div class="pharmacie-stat">
+                        <div class="pharmacie-stat-label">Total ce mois</div>
+                        <div class="pharmacie-stat-value" id="pharmacieTotal">0 Ar</div>
+                    </div>
+                    <div class="pharmacie-stat">
+                        <div class="pharmacie-stat-label">Moyenne / jour</div>
+                        <div class="pharmacie-stat-value" id="pharmacieAvg">0 Ar</div>
+                    </div>
+                </div>
+
+                <!-- Badge Déficit -->
+                <div id="pharmacieDeficitBadge" class="deficit-badge deficit-pending">
+                    <span id="pharmacieDeficitIcon">⏳</span>
+                    <span id="pharmacieDeficitText">Calcul en cours...</span>
+                </div>
             </div>
 
             <!-- Carte : Santé globale du Budget -->
@@ -517,6 +578,38 @@
             <button class="btn btn-secondary" onclick="closeAddFundsModal()" style="flex:1">Annuler</button>
             <button class="btn btn-primary" onclick="submitAddFunds()" id="goalAddFundsSubmitBtn"
                 style="flex:2">Valider</button>
+        </div>
+    </div>
+
+    <!-- MODAL GAINS PHARMACIE (saisie rapide) -->
+    <div class="modal-backdrop" id="pharmacieBackdrop" onclick="closePharmacieModal()"></div>
+    <div class="edit-modal" id="pharmacieModal" role="dialog" aria-modal="true">
+        <div class="modal-handle-bar"></div>
+        <div class="modal-header">
+            <span>💊 Gain du jour — Pharmacie</span>
+            <button class="modal-close-btn" onclick="closePharmacieModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1rem;">
+                Saisissez ce que vous avez gagné aujourd'hui à la pharmacie. Ce montant sera ajouté à vos revenus du
+                mois.
+            </p>
+            <div class="form-group">
+                <label class="form-label" for="pharmacieAmount">Montant gagné (Ar)</label>
+                <input type="number" id="pharmacieAmount" class="form-input" placeholder="Ex: 30000" step="1" min="1"
+                    required />
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="pharmacieDate">Date</label>
+                <input type="date" id="pharmacieDate" class="form-input" required />
+            </div>
+            <div id="pharmacieMessage" class="form-message hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closePharmacieModal()" style="flex:1">Annuler</button>
+            <button class="btn btn-primary" onclick="submitPharmacieGain()" id="pharmacieSubmitBtn" style="flex:2">
+                💊 Enregistrer
+            </button>
         </div>
     </div>
 
