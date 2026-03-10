@@ -59,7 +59,6 @@ const CATEGORIES = {
         'Loisirs',
         'Vêtements',
         'Animaux',
-        'Épargne',
         'Divers'
     ]
 };
@@ -1349,10 +1348,31 @@ function loadPharmacieCard(categories, safeSummary) {
     const pharmaAvg = dayOfMonth > 0 ? pharmaTotal / dayOfMonth : 0;
     document.getElementById('pharmacieAvg').textContent = formatAmount(Math.round(pharmaAvg));
 
-    // Calcul du déficit : (dépenses du mois) - (revenus hors pharmacie + gains pharmacie)
-    // Autrement dit : déficit = totalExpenses - totalIncome
-    // Si négatif → elle dépense plus qu'elle ne gagne (pharmacie incluse) → il faut combler
+    // Calcul du déficit : dépenses - revenus totaux du mois
     const deficit = safeSummary.totalExpenses - safeSummary.totalIncome;
+
+    // Jours restants dans le mois (à partir d'aujourd'hui)
+    const todayDate = new Date();
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+    const isCurrentMonth = (currentMonth === todayDate.getMonth() + 1 && currentYear === todayDate.getFullYear());
+    const remainingDays = isCurrentMonth ? (daysInMonth - todayDate.getDate()) : 0;
+
+    // Montant à gagner par jour pour combler le déficit
+    const dailyTargetEl = document.getElementById('pharmacieDailyTarget');
+    if (dailyTargetEl) {
+        if (deficit <= 0) {
+            dailyTargetEl.textContent = '✅ OK';
+            dailyTargetEl.style.color = '#059669';
+        } else if (remainingDays <= 0) {
+            dailyTargetEl.textContent = 'Mois terminé';
+            dailyTargetEl.style.color = '#6b7280';
+        } else {
+            const dailyTarget = Math.ceil(deficit / remainingDays);
+            dailyTargetEl.textContent = formatAmount(dailyTarget);
+            dailyTargetEl.style.color = '#dc2626';
+        }
+    }
+
     const badge = document.getElementById('pharmacieDeficitBadge');
     const icon = document.getElementById('pharmacieDeficitIcon');
     const text = document.getElementById('pharmacieDeficitText');
@@ -1367,7 +1387,8 @@ function loadPharmacieCard(categories, safeSummary) {
     } else {
         badge.className = 'deficit-badge deficit-gap';
         icon.textContent = '⚠️';
-        text.textContent = `Il manque encore ${formatAmount(deficit)} pour couvrir les dépenses ce mois.`;
+        const dayInfo = remainingDays > 0 ? ` (encore ${remainingDays} jour${remainingDays > 1 ? 's' : ''})` : '';
+        text.textContent = `Il manque ${formatAmount(deficit)} pour couvrir les dépenses${dayInfo}.`;
     }
 }
 
