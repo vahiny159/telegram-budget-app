@@ -917,7 +917,7 @@ async function loadDashboard() {
             message = 'Erreur serveur. Réessayez dans un instant.';
         }
 
-        alert(message);
+        alert(message + '\n\nDÉTAIL ERREUR :\n' + (err.stack || err.message));
     }
 }
 
