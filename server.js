@@ -654,10 +654,10 @@ app.put('/api/goals/:id/add', authenticateTelegramJSON, async (req, res) => {
         // 2. Créer une transaction de type "Dépense" pour déduire l'argent du solde global
         await pool.query(
             `INSERT INTO transactions (telegram_user_id, type, amount, category, description, date, is_recurring)
-             VALUES ($1, 'expense', $2, 'Épargne Objectif', $3, $4, FALSE)`,
-            [req.telegramUserId, parseFloat(amount), \`Dépôt: \${goal.name}\`, date]
+     VALUES ($1, 'expense', $2, 'Épargne Objectif', $3, $4, FALSE)`,
+            [req.telegramUserId, parseFloat(amount), `Dépôt: ${goal.name}`, date]
         );
-        
+
         await pool.query('COMMIT');
         res.json(goal);
     } catch (err) {
@@ -688,7 +688,7 @@ async function startServer() {
     await initDatabase();
     app.listen(PORT, () => {
         console.log(`🚀 Serveur démarré sur http://localhost:${PORT}`);
-            console.log(`🔒 Sécurité : Helmet ✅  Rate Limit ✅  Telegram Auth: ${process.env.BOT_TOKEN ? '✅' : '⚠️  désactivée (BOT_TOKEN manquant)'}`);
+        console.log(`🔒 Sécurité : Helmet ✅  Rate Limit ✅  Telegram Auth: ${process.env.BOT_TOKEN ? '✅' : '⚠️  désactivée (BOT_TOKEN manquant)'}`);
     });
 }
 
