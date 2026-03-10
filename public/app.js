@@ -319,8 +319,8 @@ function openEditModal(id) {
     document.getElementById('editId').value = tx.id;
     document.getElementById('editAmount').value = Math.round(tx.amount);
     document.getElementById('editDescription').value = tx.description || '';
-    // La date pgSQL peut être "2026-03-10T00:00:00.000Z" — on garde seulement YYYY-MM-DD
-    document.getElementById('editDate').value = tx.date.split('T')[0];
+    // La date pgSQL peut être un objet Date ou une chaîne ISO — on extrait YYYY-MM-DD
+    document.getElementById('editDate').value = String(tx.date).substring(0, 10);
 
     // Sélectionne le type et met à jour les catégories
     selectEditType(tx.type);
@@ -864,16 +864,23 @@ function formatAmount(amount) {
 }
 
 /**
- * Formate une date ISO en format lisible.
- * Ex: "2024-01-15" → "15 jan. 2024"
- * @param {string} dateString - La date au format ISO
- * @returns {string} La date formatée
+ * Formate une date en format lisible.
+ * Gère les deux cas que PostgreSQL peut retourner :
+ *   - chaîne "YYYY-MM-DD"
+ *   - chaîne ISO complète "2026-03-10T00:00:00.000Z"
+ * @param {string|Date} rawDate - La date brute reçue du serveur
+ * @returns {string} La date formatée en français
  */
-function formatDate(dateString) {
-    const date = new Date(dateString + 'T00:00:00');
+function formatDate(rawDate) {
+    // Extraction des 10 premiers caractères = "YYYY-MM-DD"
+    const datePart = String(rawDate).substring(0, 10);
+    // On parse à midi (12:00) pour éviter les décalages de timezone
+    const date = new Date(datePart + 'T12:00:00');
+    if (isNaN(date.getTime())) return String(rawDate); // fallback lisible
     return date.toLocaleDateString('fr-FR', {
         day: '2-digit',
         month: 'short',
         year: 'numeric'
     });
 }
+
