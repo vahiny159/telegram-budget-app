@@ -1100,7 +1100,8 @@ async function loadPharmacieCard(categories, summary) {
             currentYear === new Date().getFullYear()
         );
 
-        document.getElementById('pharmacieTotal').textContent = formatAmount(pharmacieTotal);
+        const pharmacieTotalEl = document.getElementById('pharmacieTotal');
+        if (pharmacieTotalEl) pharmacieTotalEl.textContent = formatAmount(pharmacieTotal);
 
         const deficitBadge = document.getElementById('pharmacieDeficitBadge');
         const deficitIcon = document.getElementById('pharmacieDeficitIcon');
@@ -1113,9 +1114,9 @@ async function loadPharmacieCard(categories, summary) {
 
         if (deficitToCover <= 0) {
             // Pas de déficit
-            deficitBadge.className = 'deficit-badge deficit-surplus';
-            deficitIcon.textContent = '🥳';
-            deficitText.textContent = 'Budget équilibré (sans besoin de pharmacie) !';
+            if (deficitBadge) deficitBadge.className = 'deficit-badge deficit-surplus';
+            if (deficitIcon) deficitIcon.textContent = '🥳';
+            if (deficitText) deficitText.textContent = 'Budget équilibré (sans besoin de pharmacie) !';
             if (dailyTargetEl) {
                 dailyTargetEl.textContent = '0 Ar';
                 dailyTargetEl.style.color = 'var(--text-secondary)';
@@ -1126,18 +1127,18 @@ async function loadPharmacieCard(categories, summary) {
 
             if (remainingToCover <= 0) {
                 // Comblé !
-                deficitBadge.className = 'deficit-badge deficit-surplus';
-                deficitIcon.textContent = '✅';
-                deficitText.textContent = `Déficit comblé ! (${formatAmount(Math.abs(remainingToCover))} de surplus)`;
+                if (deficitBadge) deficitBadge.className = 'deficit-badge deficit-surplus';
+                if (deficitIcon) deficitIcon.textContent = '✅';
+                if (deficitText) deficitText.textContent = `Déficit comblé ! (${formatAmount(Math.abs(remainingToCover))} de surplus)`;
                 if (dailyTargetEl) {
                     dailyTargetEl.textContent = '0 Ar';
                     dailyTargetEl.style.color = 'var(--text-secondary)';
                 }
             } else {
                 // Reste à gagner
-                deficitBadge.className = 'deficit-badge deficit-alert';
-                deficitIcon.textContent = '⚠️';
-                deficitText.textContent = `Déficit restant: ${formatAmount(remainingToCover)}`;
+                if (deficitBadge) deficitBadge.className = 'deficit-badge deficit-alert';
+                if (deficitIcon) deficitIcon.textContent = '⚠️';
+                if (deficitText) deficitText.textContent = `Déficit restant: ${formatAmount(remainingToCover)}`;
 
                 if (dailyTargetEl) {
                     if (isCurrentMonthView) {
