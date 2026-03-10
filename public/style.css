@@ -5,37 +5,38 @@
 
 /* ---- Variables globales (couleurs, tailles) ---- */
 :root {
-    --color-income: #22c55e;
-    /* Vert pour les revenus */
-    --color-income-bg: #dcfce7;
-    --color-expense: #ef4444;
-    /* Rouge pour les dépenses */
-    --color-expense-bg: #fee2e2;
-    --color-balance-pos: #3b82f6;
-    /* Bleu si solde positif */
-    --color-balance-neg: #ef4444;
-    /* Rouge si solde négatif */
+    --color-income: #10b981;
+    /* Vert doux pour les revenus */
+    --color-income-bg: #d1fae5;
+    --color-expense: #f43f5e;
+    /* Rose/Rouge doux pour les dépenses */
+    --color-expense-bg: #ffe4e6;
+    --color-balance-pos: #6366f1;
+    /* Indigo doux si solde positif */
+    --color-balance-neg: #f43f5e;
+    /* Rose/Rouge si solde négatif */
 
-    --bg-primary: #0f172a;
-    /* Fond principal sombre */
-    --bg-secondary: #1e293b;
-    /* Fond des cartes */
-    --bg-tertiary: #334155;
-    /* Fond des éléments interactifs */
+    --bg-primary: #fff1f2;
+    /* Fond principal rose/beige très clair */
+    --bg-secondary: #ffffff;
+    /* Fond des cartes blanc */
+    --bg-tertiary: #ffe4e6;
+    /* Fond interactif doux */
 
-    --text-primary: #f1f5f9;
-    /* Texte principal blanc */
-    --text-secondary: #94a3b8;
-    /* Texte secondaire gris */
+    --text-primary: #334155;
+    /* Texte principal foncé (ardoise) */
+    --text-secondary: #64748b;
+    /* Texte secondaire gris doux */
 
-    --accent: #6366f1;
-    /* Couleur d'accent (violet/indigo) */
-    --accent-hover: #4f46e5;
+    --accent: #ec4899;
+    /* Couleur d'accent (rose doux) */
+    --accent-hover: #db2777;
 
-    --border: #334155;
-    --radius: 12px;
-    --radius-sm: 8px;
-    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    --border: #fce7f3;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --shadow: 0 6px 15px -3px rgba(236, 72, 153, 0.1);
+    --shadow-sm: 0 4px 6px -1px rgba(236, 72, 153, 0.08);
 }
 
 /* ---- Reset et base ---- */
@@ -64,7 +65,7 @@ body {
    EN-TÊTE
    ========================================= */
 .app-header {
-    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    background: linear-gradient(135deg, #ffffff 0%, #fff1f2 100%);
     border-bottom: 1px solid var(--border);
     padding: 1rem;
     position: sticky;
