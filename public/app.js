@@ -529,6 +529,67 @@ function setDefaultDate() {
 }
 
 /**
+ * Vérifie le budget pour la catégorie sélectionnée lors de la saisie d'une transaction.
+ * Affiche une alerte si la dépense dépasse ou s'approche de la limite.
+ */
+function checkBudgetHint() {
+    const hintDiv = document.getElementById('budgetHint');
+    const type = document.getElementById('type').value;
+    const category = document.getElementById('category').value;
+    const amountVal = document.getElementById('amount').value;
+
+    // Si ce n'est pas une dépense, pas de catégorie ou pas de montant : on cache l'alerte
+    if (type !== 'expense' || !category || !amountVal || parseFloat(amountVal) <= 0) {
+        hintDiv.style.display = 'none';
+        return;
+    }
+
+    const amount = parseFloat(amountVal);
+    const limit = userBudgets[category];
+
+    // Si aucun budget défini pour cette catégorie
+    if (!limit) {
+        hintDiv.style.display = 'none';
+        return;
+    }
+
+    // Calcul du total déjà dépensé ce mois pour cette catégorie
+    let spentThisMonth = 0;
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    allTransactions.forEach(tx => {
+        if (tx.type === 'expense' && tx.category === category) {
+            const txDate = new Date(tx.date);
+            if (txDate.getMonth() + 1 === currentMonth && txDate.getFullYear() === currentYear) {
+                spentThisMonth += parseFloat(tx.amount);
+            }
+        }
+    });
+
+    const newTotal = spentThisMonth + amount;
+    const remaining = limit - spentThisMonth;
+
+    if (newTotal > limit) {
+        hintDiv.style.display = 'block';
+        hintDiv.style.backgroundColor = 'var(--color-expense-bg)';
+        hintDiv.style.color = 'var(--color-expense)';
+        hintDiv.innerHTML = `⚠️ <b>Attention :</b> Cette dépense va dépasser votre budget restant (${formatAmount(remaining)}).`;
+    } else if (newTotal >= limit * 0.85) {
+        hintDiv.style.display = 'block';
+        hintDiv.style.backgroundColor = '#fef3c7'; // Jaune clair
+        hintDiv.style.color = '#b45309'; // Orange foncé
+        hintDiv.innerHTML = `⚠️ <b>Bientôt épuisé :</b> Il vous restera ${formatAmount(limit - newTotal)} après cette transaction.`;
+    } else {
+        hintDiv.style.display = 'block';
+        hintDiv.style.backgroundColor = 'var(--bg-tertiary)';
+        hintDiv.style.color = 'var(--accent)';
+        hintDiv.innerHTML = `✅ Budget respecté : Il restera ${formatAmount(limit - newTotal)}.`;
+    }
+}
+
+/**
  * Gère la soumission du formulaire d'ajout de transaction.
  * Valide les données et les envoie à l'API.
  * @param {Event} event - L'événement de soumission du formulaire
@@ -594,6 +655,8 @@ async function submitTransaction(event) {
             // Succès : affiche le message et réinitialise le formulaire
             showMessage('success', '✅ Transaction enregistrée avec succès !');
             document.getElementById('transactionForm').reset();
+            // Cache l'alerte budget après soumission
+            document.getElementById('budgetHint').style.display = 'none';
             if (document.getElementById('isRecurring')) {
                 document.getElementById('isRecurring').checked = false;
             }
@@ -690,6 +753,51 @@ async function loadDashboard() {
                 balanceCard.classList.add('negative');
             } else {
                 balanceCard.classList.remove('negative');
+            }
+
+            // --- Mise à jour de la Santé du Budget Global ---
+            const globalCard = document.getElementById('globalBudgetCard');
+            let totalBudgetLimit = 0;
+            // On somme toutes les limites de budget définies
+            if (Array.isArray(budgets)) {
+                budgets.forEach(b => totalBudgetLimit += parseFloat(b.monthly_limit));
+            }
+
+            if (totalBudgetLimit > 0) {
+                // Avoir au moins un budget défini affiche la carte globale
+                globalCard.style.display = 'block';
+                const totalExpenses = parseFloat(summary.totalExpenses) || 0;
+                const percentage = Math.min((totalExpenses / totalBudgetLimit) * 100, 100).toFixed(1);
+
+                document.getElementById('globalBudgetSpent').textContent = formatAmount(totalExpenses);
+                document.getElementById('globalBudgetLimit').textContent = formatAmount(totalBudgetLimit);
+                document.getElementById('globalBudgetPct').textContent = `${percentage}%`;
+
+                const bar = document.getElementById('globalBudgetBar');
+                const statusText = document.getElementById('globalBudgetStatusText');
+
+                bar.style.width = `${percentage}%`;
+
+                // Coloration sémantique (vert < 70%, orange < 90%, rouge > 90%)
+                if (percentage >= 100) {
+                    bar.style.backgroundColor = 'var(--color-expense)'; // Rouge
+                    document.getElementById('globalBudgetPct').style.color = 'var(--color-expense)';
+                    statusText.textContent = 'Dépassement !';
+                    statusText.style.color = 'var(--color-expense)';
+                } else if (percentage >= 85) {
+                    bar.style.backgroundColor = '#f59e0b'; // Orange
+                    document.getElementById('globalBudgetPct').style.color = '#f59e0b';
+                    statusText.textContent = 'Attention, budget presque atteint';
+                    statusText.style.color = '#f59e0b';
+                } else {
+                    bar.style.backgroundColor = 'var(--accent)'; // Bleu/Vert normal
+                    document.getElementById('globalBudgetPct').style.color = 'var(--accent)';
+                    statusText.textContent = 'Budget respecté';
+                    statusText.style.color = 'var(--text-secondary)';
+                }
+            } else {
+                // S'il n'y a aucun budget défini, on cache la carte
+                globalCard.style.display = 'none';
             }
         }
 
@@ -801,30 +909,37 @@ function displayCategories(categories, totalExpenses) {
             }
             const overage = total - limit;
             budgetInfoHTML = `
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px;">
-                    Budget : ${formatAmount(total)} / ${formatAmount(limit)}
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:4px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>Budget : ${formatAmount(total)} / ${formatAmount(limit)}</span>
+                    ${overage > 0 ? `<span class="budget-overage" style="color:var(--color-expense); font-weight:600">Dépassement: +${formatAmount(overage)}</span>` : ''}
                 </div>
-                ${overage > 0 ? `<div class="budget-overage">⚠️ Dépassement de ${formatAmount(overage)}</div>` : ''}
             `;
         } else {
-            // Calcul par rapport au total des dépenses (comportement par défaut)
-            percentage = totalExpenses > 0 ? Math.round((total / parseFloat(totalExpenses)) * 100) : 0;
-            budgetInfoHTML = `<div style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">${percentage}% des dépenses</div>`;
+            // Pas de budget défini
+            percentage = totalExpenses > 0 ? Math.round((total / totalExpenses) * 100) : 0;
+            // Mode "Tableau de Bord Budgets" : Afficher un bouton au lieu de pourcentage
+            budgetInfoHTML = `
+                <div style="margin-top: 6px;">
+                    <button class="budget-set-btn" onclick="openBudgetModal()" style="font-size:0.7rem; padding:0.2rem 0.5rem; background:var(--bg-tertiary); border:1px dashed var(--accent); color:var(--accent); border-radius:4px; cursor:pointer;">
+                        + Définir un budget
+                    </button>
+                </div>
+            `;
         }
 
         return `
             <div class="category-item">
-                <div style="flex: 1;">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span class="category-name">${cat.category}</span>
-                        <span class="category-amount" style="${limit && total > limit ? 'color:var(--color-expense)' : ''}">${formatAmount(total)}</span>
-                    </div>
-                    <div class="category-bar-container">
-                        <div class="category-bar" style="width:${percentage}%; background-color:${barColor}"></div>
-                    </div>
-                    ${budgetInfoHTML}
+                <div class="category-header">
+                    <span class="category-name">${cat.category}</span>
+                    <span class="category-amount" style="font-weight: 600;">${formatAmount(total)}</span>
                 </div>
-            </div>`;
+                ${budgetInfoHTML}
+                ${limit ? `
+                <div class="category-bar-container" style="margin-top:0.4rem; height:6px;">
+                    <div class="category-bar" style="width: ${percentage}%; background-color: ${barColor}"></div>
+                </div>` : ''}
+            </div>
+        `;
     }).join('');
 }
 

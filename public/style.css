@@ -255,6 +255,37 @@ body {
 /* =========================================
    CARTES DU TABLEAU DE BORD
    ========================================= */
+/* Carte de résumé financier */
+.card {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    border: 1px solid var(--border);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Carte Santé du Budget (Pleine largeur stylisée) */
+.budget-health-card {
+    background: linear-gradient(145deg, var(--bg-secondary), var(--bg-primary));
+    border: 1px solid var(--accent);
+    box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.1), 0 2px 4px -1px rgba(99, 102, 241, 0.06);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+}
+
+.budget-health-card:hover {
+    box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.2), 0 4px 6px -2px rgba(99, 102, 241, 0.1);
+    transform: translateY(-3px);
+}
+
 .summary-cards {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -262,18 +293,9 @@ body {
     margin-bottom: 1.5rem;
 }
 
-.card {
-    background: var(--bg-secondary);
-    border-radius: var(--radius);
-    padding: 1rem;
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow);
-    transition: transform 0.2s ease;
-}
-
-.card:hover {
-    transform: translateY(-2px);
-}
+/* The original .card rule was replaced by the new one above.
+   The original .card:hover rule was replaced by the new one above.
+   The original .card-balance rule is now below. */
 
 /* La carte solde prend toute la largeur */
 .card-balance {
@@ -349,21 +371,35 @@ body {
 .category-item {
     background: var(--bg-secondary);
     border-radius: var(--radius-sm);
-    padding: 0.75rem 1rem;
+    padding: 0.85rem 1rem;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    justify-content: center;
     border: 1px solid var(--border);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.category-item:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.category-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
 }
 
 .category-name {
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     color: var(--text-primary);
+    font-weight: 500;
 }
 
 .category-amount {
-    font-weight: 600;
-    color: var(--color-expense);
+    font-weight: 700;
+    color: var(--text-primary);
 }
 
 /* Barre de progression de la catégorie */
