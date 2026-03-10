@@ -842,11 +842,10 @@ body {
     right: 0;
     max-width: 600px;
     margin: 0 auto;
-    background: #1a2744;
-    /* légèrement différent pour contraste */
-    border-top: 1px solid rgba(99, 102, 241, 0.3);
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
     border-radius: 20px 20px 0 0;
-    box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border);
+    box-shadow: 0 -12px 48px rgba(236, 72, 153, 0.1), 0 0 0 1px var(--border);
     z-index: 201;
     transform: translateY(105%);
     transition: transform 0.38s cubic-bezier(0.32, 0.72, 0, 1);
@@ -916,7 +915,7 @@ body {
     padding-bottom: max(0.875rem, env(safe-area-inset-bottom));
     border-top: 1px solid var(--border);
     flex-shrink: 0;
-    background: #1a2744;
+    background: var(--bg-secondary);
 }
 
 .modal-footer .btn {
