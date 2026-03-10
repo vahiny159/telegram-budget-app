@@ -1024,19 +1024,25 @@ input:checked+.toggle-knob:before {
    BUDGET SETTINGS MODAL
    ========================================= */
 .budget-set-btn {
+    display: flex;
+    align-items: center;
     background: var(--bg-tertiary);
-    border: none;
-    color: var(--text-primary);
-    font-size: 0.75rem;
-    padding: 0.3rem 0.6rem;
-    border-radius: var(--radius-sm);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 0.4rem 0.8rem;
+    border-radius: 20px;
     cursor: pointer;
     font-family: inherit;
-    transition: background 0.2s;
+    transition: all 0.2s ease;
 }
 
 .budget-set-btn:hover {
     background: var(--accent);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
 }
 
 .budget-row {
