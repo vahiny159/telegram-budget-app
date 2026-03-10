@@ -679,7 +679,7 @@ app.put('/api/goals/:id/add', async (req, res) => {
 });
 
 // DELETE /api/goals/:id — Supprimer un objectif
-app.delete('/api/goals/:id', authenticateTelegramParams, async (req, res) => {
+app.delete('/api/goals/:id', async (req, res) => {
     try {
         await pool.query(
             'DELETE FROM goals WHERE id = $1 AND telegram_user_id = $2',
