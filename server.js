@@ -232,7 +232,18 @@ async function initDatabase() {
             );
         `);
 
-        console.log('✅ Tables prêtes (transactions, budgets)');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS goals (
+                id SERIAL PRIMARY KEY,
+                telegram_user_id BIGINT NOT NULL,
+                name VARCHAR(150) NOT NULL,
+                target_amount DECIMAL(12,2) NOT NULL CHECK (target_amount > 0),
+                current_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        console.log('✅ Tables prêtes (transactions, budgets, goals)');
     } catch (err) {
         console.error('❌ Erreur initialisation base de données:', err.message);
     }
@@ -592,7 +603,7 @@ app.post('/api/apply-recurring', async (req, res) => {
 // =========================================
 
 // GET /api/goals — Récupérer le ou les objectifs
-app.get('/api/goals', authenticateTelegramParams, async (req, res) => {
+app.get('/api/goals', async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT * FROM goals WHERE telegram_user_id = $1 ORDER BY created_at DESC',
@@ -606,7 +617,7 @@ app.get('/api/goals', authenticateTelegramParams, async (req, res) => {
 });
 
 // POST /api/goals — Créer un nouvel objectif
-app.post('/api/goals', authenticateTelegramJSON, async (req, res) => {
+app.post('/api/goals', async (req, res) => {
     const { name, target_amount } = req.body;
     if (!name || !target_amount || parseFloat(target_amount) <= 0) {
         return res.status(400).json({ error: 'Données invalides' });
@@ -625,7 +636,7 @@ app.post('/api/goals', authenticateTelegramJSON, async (req, res) => {
 });
 
 // PUT /api/goals/:id/add — Ajouter des fonds à l'objectif
-app.put('/api/goals/:id/add', authenticateTelegramJSON, async (req, res) => {
+app.put('/api/goals/:id/add', async (req, res) => {
     const { amount } = req.body;
     const { id } = req.params;
 
