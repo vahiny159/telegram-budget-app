@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8" />
     <!-- Viewport mobile-first : adapte le site à l'écran du téléphone -->
@@ -13,9 +14,12 @@
     <!-- Notre feuille de style -->
     <link rel="stylesheet" href="style.css" />
 
-    <!-- SDK Telegram Mini App : OBLIGATOIRE pour accéder à l'utilisateur Telegram -->
+    <!-- SDK Telegram Mini App -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Chart.js pour le graphique camembert -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 </head>
+
 <body>
 
     <!-- ===========================
@@ -45,6 +49,21 @@
             📋 Historique
         </button>
     </nav>
+
+    <!-- ===========================
+         NAVIGATEUR DE MOIS
+         Visible sur le tableau de bord et l'historique
+    =========================== -->
+    <div class="month-nav" id="monthNav">
+        <button class="month-arrow" onclick="changeMonth(-1)" aria-label="Mois précédent">&#8592;</button>
+        <div class="month-label-wrap">
+            <span class="month-label" id="monthLabel">Chargement...</span>
+            <button class="month-today-btn" onclick="goToToday()" id="todayBtn"
+                style="display:none">Aujourd'hui</button>
+        </div>
+        <button class="month-arrow" onclick="changeMonth(1)" id="nextMonthBtn"
+            aria-label="Mois suivant">&#8594;</button>
+    </div>
 
     <!-- ===========================
          CONTENU PRINCIPAL
@@ -80,8 +99,27 @@
                 </div>
             </div>
 
-            <!-- Dépenses par catégorie -->
-            <div class="section-title">🗂️ Dépenses par catégorie</div>
+            <!-- Graphique donut des dépenses par catégorie -->
+            <div class="chart-section" id="chartSection">
+                <div class="chart-section-header">
+                    <span class="chart-section-title">📊 Répartition des dépenses</span>
+                </div>
+                <div class="chart-wrapper">
+                    <!-- Donut chart -->
+                    <div class="chart-canvas-wrap">
+                        <canvas id="expenseChart"></canvas>
+                        <div class="chart-center">
+                            <div class="chart-center-label">dépenses</div>
+                            <div class="chart-center-amount" id="chartCenterAmount">–</div>
+                        </div>
+                    </div>
+                    <!-- Légende custom -->
+                    <div id="chartLegend" class="chart-legend"></div>
+                </div>
+            </div>
+
+            <!-- Détail textuel par catégorie -->
+            <div class="section-title" style="margin-top:1rem">🗂️ Détail par catégorie</div>
             <div id="categoriesList" class="categories-list">
                 <p class="empty-message">Aucune dépense enregistrée.</p>
             </div>
@@ -124,16 +162,9 @@
 
                 <!-- Montant -->
                 <div class="form-group">
-                    <label class="form-label" for="amount">Montant (€) *</label>
-                    <input
-                        type="number"
-                        id="amount"
-                        class="form-input"
-                        placeholder="Ex: 1500.00"
-                        step="0.01"
-                        min="0.01"
-                        required
-                    />
+                    <label class="form-label" for="amount">Montant (Ar) *</label>
+                    <input type="number" id="amount" class="form-input" placeholder="Ex: 1500.00" step="0.01" min="0.01"
+                        required />
                 </div>
 
                 <!-- Catégorie -->
@@ -147,24 +178,14 @@
                 <!-- Description -->
                 <div class="form-group">
                     <label class="form-label" for="description">Description</label>
-                    <input
-                        type="text"
-                        id="description"
-                        class="form-input"
-                        placeholder="Ex: Courses au supermarché"
-                        maxlength="200"
-                    />
+                    <input type="text" id="description" class="form-input" placeholder="Ex: Courses au supermarché"
+                        maxlength="200" />
                 </div>
 
                 <!-- Date -->
                 <div class="form-group">
                     <label class="form-label" for="date">Date *</label>
-                    <input
-                        type="date"
-                        id="date"
-                        class="form-input"
-                        required
-                    />
+                    <input type="date" id="date" class="form-input" required />
                 </div>
 
                 <!-- Bouton de soumission -->
@@ -195,7 +216,78 @@
 
     </main>
 
+    <!-- ==============================================
+         MODAL D'ÉDITION (bottom sheet)
+         Slide-up depuis le bas, style natif mobile
+    ============================================== -->
+    <div class="modal-backdrop" id="editBackdrop" onclick="closeEditModal()"></div>
+    <div class="edit-modal" id="editModal" role="dialog" aria-modal="true" aria-label="Modifier la transaction">
+        <!-- Barre de glisse -->
+        <div class="modal-handle-bar"></div>
+
+        <!-- En-tête -->
+        <div class="modal-header">
+            <span>✏️ Modifier la transaction</span>
+            <button class="modal-close-btn" onclick="closeEditModal()" aria-label="Fermer">✕</button>
+        </div>
+
+        <!-- Corps du formulaire d'édition -->
+        <div class="modal-body">
+            <input type="hidden" id="editId" />
+
+            <!-- Type -->
+            <div class="form-group">
+                <label class="form-label">Type *</label>
+                <div class="type-selector">
+                    <button type="button" class="type-btn type-income active" id="editTypeIncome"
+                        onclick="selectEditType('income')">📈 Revenu</button>
+                    <button type="button" class="type-btn type-expense" id="editTypeExpense"
+                        onclick="selectEditType('expense')">📉 Dépense</button>
+                </div>
+                <input type="hidden" id="editType" value="income" />
+            </div>
+
+            <!-- Montant -->
+            <div class="form-group">
+                <label class="form-label" for="editAmount">Montant (Ar) *</label>
+                <input type="number" id="editAmount" class="form-input" placeholder="Ex: 50000" step="1" min="1"
+                    required />
+            </div>
+
+            <!-- Catégorie -->
+            <div class="form-group">
+                <label class="form-label" for="editCategory">Catégorie *</label>
+                <select id="editCategory" class="form-input form-select" required></select>
+            </div>
+
+            <!-- Description -->
+            <div class="form-group">
+                <label class="form-label" for="editDescription">Description</label>
+                <input type="text" id="editDescription" class="form-input" placeholder="Ex: Courses au marché"
+                    maxlength="200" />
+            </div>
+
+            <!-- Date -->
+            <div class="form-group">
+                <label class="form-label" for="editDate">Date *</label>
+                <input type="date" id="editDate" class="form-input" required />
+            </div>
+
+            <!-- Message d'erreur dans le modal -->
+            <div id="editMessage" class="form-message hidden"></div>
+        </div>
+
+        <!-- Pied de page avec boutons -->
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeEditModal()" style="flex:1">Annuler</button>
+            <button class="btn btn-primary" onclick="submitEdit()" id="editSubmitBtn" style="flex:2">
+                💾 Enregistrer
+            </button>
+        </div>
+    </div>
+
     <!-- Notre script JavaScript -->
     <script src="app.js"></script>
 </body>
+
 </html>

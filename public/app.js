@@ -13,8 +13,25 @@ let telegramUserId = null;
 // Stocke l'initData signé par Telegram (envoyé au backend pour validation)
 let telegramInitData = '';
 
-// Stocke toutes les transactions chargées (pour le filtrage)
+// Stocke toutes les transactions chargées (pour le filtrage local)
 let allTransactions = [];
+
+// Mois et année actuellement affichés dans le navigateur
+const today = new Date();
+let currentMonth = today.getMonth() + 1; // 1–12
+let currentYear = today.getFullYear();
+
+// Instance du graphique Chart.js
+let expenseChart = null;
+
+// ID de la transaction en cours d'édition
+let editingTransactionId = null;
+
+// Palette de couleurs pour le graphique donut
+const CHART_COLORS = [
+    '#6366f1', '#22c55e', '#f59e0b', '#3b82f6', '#ec4899',
+    '#8b5cf6', '#14b8a6', '#f97316', '#ef4444', '#a855f7', '#06b6d4', '#84cc16'
+];
 
 // Catégories disponibles selon le type de transaction
 const CATEGORIES = {
@@ -52,21 +69,13 @@ const CATEGORIES = {
  * Elle initialise l'intégration Telegram et charge les données.
  */
 document.addEventListener('DOMContentLoaded', function () {
-    console.log('📱 Application Budget Planner démarrée');
-
-    // Initialisation de l'API Telegram Mini App
+    console.log('📱 Budget Planner démarré');
     initTelegram();
-
-    // Définit la date d'aujourd'hui par défaut dans le formulaire
     setDefaultDate();
-
-    // Met à jour les catégories dans le formulaire (income par défaut)
     updateCategories('income');
-
-    // Charge les données du tableau de bord
+    initMonthNav();
+    initChart();      // Initialise le graphique donut
     loadDashboard();
-
-    // Charge l'historique des transactions
     loadTransactions();
 });
 
@@ -122,13 +131,318 @@ function useFallbackMode() {
 }
 
 // =========================================
-// NAVIGATION PAR ONGLETS
+// NAVIGATEUR DE MOIS
+// =========================================
+
+/** Noms des mois en français */
+const MONTHS_FR = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+/**
+ * Initialise le navigateur de mois : met à jour le label et l'état des boutons.
+ */
+function initMonthNav() {
+    updateMonthNav();
+}
+
+/**
+ * Met à jour le label du mois et l'état du bouton "suivant".
+ */
+function updateMonthNav() {
+    document.getElementById('monthLabel').textContent =
+        MONTHS_FR[currentMonth - 1] + ' ' + currentYear;
+
+    // Désactive le bouton "suivant" si on est déjà au mois actuel
+    const nowMonth = today.getMonth() + 1;
+    const nowYear = today.getFullYear();
+    const isCurrentMonth = (currentMonth === nowMonth && currentYear === nowYear);
+    document.getElementById('nextMonthBtn').disabled = isCurrentMonth;
+
+    // Affiche/Cache le bouton "Aujourd'hui"
+    const todayBtn = document.getElementById('todayBtn');
+    todayBtn.style.display = isCurrentMonth ? 'none' : 'inline-block';
+}
+
+/**
+ * Navigue vers le mois précédent ou suivant.
+ * @param {number} direction - -1 pour précédent, +1 pour suivant
+ */
+function changeMonth(direction) {
+    currentMonth += direction;
+
+    if (currentMonth < 1) { currentMonth = 12; currentYear--; }
+    if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+
+    // Empêche de dépasser le mois actuel
+    const nowMonth = today.getMonth() + 1;
+    const nowYear = today.getFullYear();
+    if (currentYear > nowYear || (currentYear === nowYear && currentMonth > nowMonth)) {
+        currentMonth = nowMonth;
+        currentYear = nowYear;
+    }
+
+    // Animation de transition
+    const label = document.getElementById('monthLabel');
+    label.style.opacity = '0';
+    setTimeout(() => {
+        updateMonthNav();
+        label.style.opacity = '1';
+        // Recharge les données pour le nouveau mois
+        loadDashboard();
+        loadTransactions();
+    }, 150);
+}
+
+/**
+ * Revient au mois actuel.
+ */
+function goToToday() {
+    currentMonth = today.getMonth() + 1;
+    currentYear = today.getFullYear();
+    updateMonthNav();
+    loadDashboard();
+    loadTransactions();
+}
+
+// =========================================
+// GRAPHIQUE DONUT (CHART.JS)
 // =========================================
 
 /**
- * Affiche l'onglet demandé et cache les autres.
- * @param {string} tabName - Nom de l'onglet à afficher ('dashboard', 'add', 'history')
+ * Initialise le graphique donut Chart.js.
+ * Appelé une seule fois au chargement de la page.
  */
+function initChart() {
+    const canvas = document.getElementById('expenseChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    expenseChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: [],
+            datasets: [{
+                data: [],
+                backgroundColor: CHART_COLORS,
+                borderColor: '#0f172a',   // = --bg-primary, crée des séparations nettes
+                borderWidth: 2,
+                hoverOffset: 10,           // Le segment s'agrandit au survol
+                hoverBorderWidth: 0
+            }]
+        },
+        options: {
+            cutout: '68%',               // Épaisseur de l'anneau
+            animation: {
+                duration: 700,
+                easing: 'easeInOutCubic'
+            },
+            plugins: {
+                legend: { display: false }, // On utilise notre légende custom
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => ` ${ctx.label}: ${formatAmount(ctx.parsed)}`
+                    },
+                    backgroundColor: '#1e293b',
+                    titleColor: '#f1f5f9',
+                    bodyColor: '#94a3b8',
+                    borderColor: '#334155',
+                    borderWidth: 1
+                }
+            },
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+}
+
+/**
+ * Met à jour le graphique et la légende avec les nouvelles données.
+ * @param {Array} categories - [{category, total}, ...]
+ * @param {number} totalExpenses - Total pour les pourcentages
+ */
+function updateChart(categories, totalExpenses) {
+    // Mise à jour du texte central
+    const centerEl = document.getElementById('chartCenterAmount');
+    if (centerEl) {
+        centerEl.textContent = categories.length > 0
+            ? formatAmount(totalExpenses)
+            : '–';
+    }
+
+    if (!expenseChart) return;
+
+    const labels = categories.map(c => c.category);
+    const data = categories.map(c => parseFloat(c.total));
+    const colors = CHART_COLORS.slice(0, labels.length);
+
+    expenseChart.data.labels = labels;
+    expenseChart.data.datasets[0].data = data;
+    expenseChart.data.datasets[0].backgroundColor = colors;
+    expenseChart.update();
+
+    // Construction de la légende
+    const legend = document.getElementById('chartLegend');
+    if (!legend) return;
+
+    if (categories.length === 0) {
+        legend.innerHTML = '<p style="color:var(--text-secondary);font-size:0.8rem;padding:0.25rem">Aucune dépense ce mois.</p>';
+        return;
+    }
+
+    legend.innerHTML = categories.map((cat, i) => {
+        const pct = totalExpenses > 0
+            ? Math.round((parseFloat(cat.total) / totalExpenses) * 100)
+            : 0;
+        return `
+            <div class="legend-item">
+                <span class="legend-dot" style="background:${colors[i] || '#6366f1'}"></span>
+                <span class="legend-name">${cat.category}</span>
+                <span class="legend-pct">${pct}%</span>
+            </div>`;
+    }).join('');
+}
+
+// =========================================
+// MODAL D'ÉDITION
+// =========================================
+
+/**
+ * Ouvre le bottom sheet d'édition pré-rempli avec les données de la transaction.
+ * @param {number} id - L'ID de la transaction à éditer
+ */
+function openEditModal(id) {
+    const tx = allTransactions.find(t => t.id === id);
+    if (!tx) return;
+    editingTransactionId = id;
+
+    // Pré-remplit tous les champs
+    document.getElementById('editId').value = tx.id;
+    document.getElementById('editAmount').value = Math.round(tx.amount);
+    document.getElementById('editDescription').value = tx.description || '';
+    // La date pgSQL peut être "2026-03-10T00:00:00.000Z" — on garde seulement YYYY-MM-DD
+    document.getElementById('editDate').value = tx.date.split('T')[0];
+
+    // Sélectionne le type et met à jour les catégories
+    selectEditType(tx.type);
+    // Attend la mise à jour du select puis sélectionne la bonne catégorie
+    setTimeout(() => {
+        document.getElementById('editCategory').value = tx.category;
+    }, 0);
+
+    // Masque les messages résiduels
+    const msg = document.getElementById('editMessage');
+    if (msg) msg.className = 'form-message hidden';
+
+    // Ouvre le bottom sheet
+    document.getElementById('editBackdrop').classList.add('active');
+    document.getElementById('editModal').classList.add('active');
+    document.body.style.overflow = 'hidden'; // Empêche le scroll arrière-plan
+
+    // Vibration Telegram (feedback haptique)
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
+    }
+}
+
+/**
+ * Sélectionne le type dans le formulaire d'édition et met à jour les catégories.
+ * @param {string} type - 'income' ou 'expense'
+ */
+function selectEditType(type) {
+    document.getElementById('editType').value = type;
+    const incBtn = document.getElementById('editTypeIncome');
+    const expBtn = document.getElementById('editTypeExpense');
+    incBtn.classList.remove('active');
+    expBtn.classList.remove('active');
+    if (type === 'income') incBtn.classList.add('active');
+    else expBtn.classList.add('active');
+    updateEditCategories(type);
+}
+
+/**
+ * Met à jour les options du select de catégorie dans le modal d'édition.
+ * @param {string} type - 'income' ou 'expense'
+ */
+function updateEditCategories(type) {
+    const select = document.getElementById('editCategory');
+    const cats = CATEGORIES[type];
+    select.innerHTML = '<option value="">-- Choisir --</option>' +
+        cats.map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
+/**
+ * Ferme le modal d'édition avec animation.
+ */
+function closeEditModal() {
+    document.getElementById('editBackdrop').classList.remove('active');
+    document.getElementById('editModal').classList.remove('active');
+    document.body.style.overflow = '';
+    editingTransactionId = null;
+}
+
+/**
+ * Soumet la modification de la transaction via PUT.
+ */
+async function submitEdit() {
+    const id = document.getElementById('editId').value;
+    const type = document.getElementById('editType').value;
+    const amount = document.getElementById('editAmount').value;
+    const category = document.getElementById('editCategory').value;
+    const description = document.getElementById('editDescription').value.trim();
+    const date = document.getElementById('editDate').value;
+    const msgEl = document.getElementById('editMessage');
+
+    // Validation client
+    if (!amount || parseFloat(amount) <= 0) {
+        msgEl.textContent = '❌ Montant invalide.';
+        msgEl.className = 'form-message error';
+        return;
+    }
+    if (!category) {
+        msgEl.textContent = '❌ Veuillez choisir une catégorie.';
+        msgEl.className = 'form-message error';
+        return;
+    }
+
+    const btn = document.getElementById('editSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Enregistrement...';
+
+    try {
+        const response = await fetch('/api/transactions/' + id, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            },
+            body: JSON.stringify({ type, amount: parseFloat(amount), category, description, date })
+        });
+
+        if (response.ok) {
+            // Succès
+            if (window.Telegram?.WebApp?.HapticFeedback) {
+                window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+            }
+            closeEditModal();
+            // Recharge les données
+            await Promise.all([loadTransactions(), loadDashboard()]);
+        } else {
+            const data = await response.json();
+            msgEl.textContent = '❌ ' + (data.error || 'Erreur serveur.');
+            msgEl.className = 'form-message error';
+        }
+    } catch (err) {
+        console.error('Erreur PUT:', err);
+        msgEl.textContent = '❌ Erreur de connexion.';
+        msgEl.className = 'form-message error';
+    }
+
+    btn.disabled = false;
+    btn.textContent = '💾 Enregistrer';
+}
+
+
 function showTab(tabName) {
     // Cache tous les contenus d'onglets
     document.querySelectorAll('.tab-content').forEach(tab => {
@@ -324,14 +638,15 @@ async function loadDashboard() {
     if (!telegramUserId) return;
 
     try {
-        // En-têtes communs à toutes les requêtes API (authentification Telegram)
+        // En-têtes d'authentification + filtrage par mois
         const authHeaders = {
             'x-telegram-init-data': telegramInitData,
             'x-telegram-user-id': telegramUserId
         };
+        const monthParams = `month=${currentMonth}&year=${currentYear}`;
 
         // === Chargement du résumé financier ===
-        const summaryRes = await fetch('/api/summary', { headers: authHeaders });
+        const summaryRes = await fetch(`/api/summary?${monthParams}`, { headers: authHeaders });
         const summary = await summaryRes.json();
 
         if (summaryRes.ok) {
@@ -348,7 +663,7 @@ async function loadDashboard() {
         }
 
         // === Chargement des catégories ===
-        const catRes = await fetch('/api/categories-summary', { headers: authHeaders });
+        const catRes = await fetch(`/api/categories-summary?${monthParams}`, { headers: authHeaders });
         const categories = await catRes.json();
 
         displayCategories(categories, summary.totalExpenses);
@@ -364,10 +679,14 @@ async function loadDashboard() {
  * @param {number} totalExpenses - Total des dépenses pour calculer le pourcentage
  */
 function displayCategories(categories, totalExpenses) {
+    // Met à jour le graphique donut
+    updateChart(categories || [], parseFloat(totalExpenses) || 0);
+
     const container = document.getElementById('categoriesList');
+    if (!container) return;
 
     if (!categories || categories.length === 0) {
-        container.innerHTML = '<p class="empty-message">Aucune dépense enregistrée.</p>';
+        container.innerHTML = '<p class="empty-message">Aucune dépense ce mois.</p>';
         return;
     }
 
@@ -375,21 +694,19 @@ function displayCategories(categories, totalExpenses) {
         const percentage = totalExpenses > 0
             ? Math.round((parseFloat(cat.total) / parseFloat(totalExpenses)) * 100)
             : 0;
-
         return `
             <div class="category-item">
                 <div style="flex: 1;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span class="category-name">${cat.category}</span>
                         <span class="category-amount">${formatAmount(cat.total)}</span>
                     </div>
                     <div class="category-bar-container">
-                        <div class="category-bar" style="width: ${percentage}%"></div>
+                        <div class="category-bar" style="width:${percentage}%"></div>
                     </div>
                     <div style="font-size:0.7rem; color:#94a3b8; margin-top:2px;">${percentage}% des dépenses</div>
                 </div>
-            </div>
-        `;
+            </div>`;
     }).join('');
 }
 
@@ -404,7 +721,7 @@ async function loadTransactions() {
     if (!telegramUserId) return;
 
     try {
-        const response = await fetch('/api/transactions', {
+        const response = await fetch(`/api/transactions?month=${currentMonth}&year=${currentYear}`, {
             headers: {
                 'x-telegram-init-data': telegramInitData,
                 'x-telegram-user-id': telegramUserId
@@ -450,16 +767,14 @@ function displayTransactions(transactions) {
                     <div class="transaction-description">${tx.description || 'Aucune description'}</div>
                     <div class="transaction-date">📅 ${formattedDate}</div>
                 </div>
-                <div style="display:flex; align-items:center; gap:0.5rem;">
+                <div style="display:flex; align-items:center; gap:0.4rem;">
                     <span class="transaction-amount ${amountClass}">
                         ${sign}${formatAmount(tx.amount)}
                     </span>
-                    <button class="btn-delete" onclick="deleteTransaction(${tx.id})" title="Supprimer">
-                        🗑️
-                    </button>
+                    <button class="btn-edit" onclick="openEditModal(${tx.id})" title="Modifier">✏️</button>
+                    <button class="btn-delete" onclick="deleteTransaction(${tx.id})" title="Supprimer">🗑️</button>
                 </div>
-            </div>
-        `;
+            </div>`;
     }).join('');
 }
 
@@ -532,17 +847,20 @@ async function deleteTransaction(id) {
 // =========================================
 
 /**
- * Formate un nombre en montant avec 2 décimales et symbole €.
- * Ex: 1500.5 → "1 500,50 €"
+ * Formate un nombre en Ariary malagasy.
+ * Ex: 1500000 → "1 500 000 Ar"
+ * L'Ariary n'utilise pas de centimes dans la pratique.
  * @param {number|string} amount - Le montant à formater
- * @returns {string} Le montant formaté
+ * @returns {string} Le montant formaté en Ariary
  */
 function formatAmount(amount) {
-    return new Intl.NumberFormat('fr-FR', {
-        style: 'currency',
-        currency: 'EUR',
-        minimumFractionDigits: 2
-    }).format(parseFloat(amount) || 0);
+    const num = Math.round(parseFloat(amount) || 0);
+    // Séparateur de milliers avec espace (style malagasy)
+    const formatted = num.toLocaleString('fr-FR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+    return formatted + ' Ar';
 }
 
 /**

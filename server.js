@@ -224,13 +224,29 @@ async function initDatabase() {
 // (req.telegramUserId est dispo grâce au middleware)
 // =========================================
 
-// GET /api/transactions — Toutes les transactions de l'utilisateur
+// GET /api/transactions — Transactions de l'utilisateur (filtrables par mois/année)
 app.get('/api/transactions', async (req, res) => {
+    // Paramètres optionnels de filtrage par mois : ?month=3&year=2026
+    const { month, year } = req.query;
+
     try {
-        const result = await pool.query(
-            'SELECT * FROM transactions WHERE telegram_user_id = $1 ORDER BY date DESC, created_at DESC',
-            [req.telegramUserId]
-        );
+        let query, params;
+
+        if (month && year) {
+            // Filtre par mois et année spécifiques
+            query = `SELECT * FROM transactions
+                     WHERE telegram_user_id = $1
+                       AND EXTRACT(MONTH FROM date) = $2
+                       AND EXTRACT(YEAR  FROM date) = $3
+                     ORDER BY date DESC, created_at DESC`;
+            params = [req.telegramUserId, parseInt(month), parseInt(year)];
+        } else {
+            // Retourne toutes les transactions
+            query = 'SELECT * FROM transactions WHERE telegram_user_id = $1 ORDER BY date DESC, created_at DESC';
+            params = [req.telegramUserId];
+        }
+
+        const result = await pool.query(query, params);
         res.json(result.rows);
     } catch (err) {
         console.error('Erreur GET /api/transactions:', err.message);
@@ -299,17 +315,75 @@ app.delete('/api/transactions/:id', async (req, res) => {
     }
 });
 
-// GET /api/summary — Résumé financier
-app.get('/api/summary', async (req, res) => {
+// PUT /api/transactions/:id — Modifier une transaction existante
+app.put('/api/transactions/:id', async (req, res) => {
+    const { id } = req.params;
+    const { type, amount, category, description, date } = req.body;
+
+    if (isNaN(parseInt(id, 10))) {
+        return res.status(400).json({ error: 'ID invalide' });
+    }
+    if (!type || !amount || !category || !date) {
+        return res.status(400).json({ error: 'Champs obligatoires manquants' });
+    }
+    if (!['income', 'expense'].includes(type)) {
+        return res.status(400).json({ error: 'Type invalide' });
+    }
+    if (isNaN(amount) || parseFloat(amount) <= 0) {
+        return res.status(400).json({ error: 'Montant invalide' });
+    }
+    if (isNaN(new Date(date).getTime())) {
+        return res.status(400).json({ error: 'Date invalide' });
+    }
+    if (description && description.length > 500) {
+        return res.status(400).json({ error: 'Description trop longue' });
+    }
+
     try {
         const result = await pool.query(
-            `SELECT
+            `UPDATE transactions
+             SET type=$2, amount=$3, category=$4, description=$5, date=$6
+             WHERE id=$1 AND telegram_user_id=$7
+             RETURNING *`,
+            [id, type, parseFloat(amount), category, description || '', date, req.telegramUserId]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Transaction non trouvée ou non autorisée' });
+        }
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Erreur PUT /api/transactions:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+// GET /api/summary — Résumé financier (filtrable par mois/année)
+app.get('/api/summary', async (req, res) => {
+    const { month, year } = req.query;
+
+    try {
+        let query, params;
+
+        if (month && year) {
+            query = `SELECT
                 COALESCE(SUM(CASE WHEN type = 'income'  THEN amount ELSE 0 END), 0) AS "totalIncome",
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS "totalExpenses"
              FROM transactions
-             WHERE telegram_user_id = $1`,
-            [req.telegramUserId]
-        );
+             WHERE telegram_user_id = $1
+               AND EXTRACT(MONTH FROM date) = $2
+               AND EXTRACT(YEAR  FROM date) = $3`;
+            params = [req.telegramUserId, parseInt(month), parseInt(year)];
+        } else {
+            query = `SELECT
+                COALESCE(SUM(CASE WHEN type = 'income'  THEN amount ELSE 0 END), 0) AS "totalIncome",
+                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS "totalExpenses"
+             FROM transactions
+             WHERE telegram_user_id = $1`;
+            params = [req.telegramUserId];
+        }
+
+        const result = await pool.query(query, params);
         const { totalIncome, totalExpenses } = result.rows[0];
         res.json({
             totalIncome: parseFloat(totalIncome),
@@ -322,17 +396,30 @@ app.get('/api/summary', async (req, res) => {
     }
 });
 
-// GET /api/categories-summary — Dépenses par catégorie
+// GET /api/categories-summary — Dépenses par catégorie (filtrable par mois/année)
 app.get('/api/categories-summary', async (req, res) => {
+    const { month, year } = req.query;
+
     try {
-        const result = await pool.query(
-            `SELECT category, SUM(amount) AS total
-             FROM transactions
-             WHERE telegram_user_id = $1 AND type = 'expense'
-             GROUP BY category
-             ORDER BY total DESC`,
-            [req.telegramUserId]
-        );
+        let query, params;
+
+        if (month && year) {
+            query = `SELECT category, SUM(amount) AS total
+                     FROM transactions
+                     WHERE telegram_user_id = $1 AND type = 'expense'
+                       AND EXTRACT(MONTH FROM date) = $2
+                       AND EXTRACT(YEAR  FROM date) = $3
+                     GROUP BY category ORDER BY total DESC`;
+            params = [req.telegramUserId, parseInt(month), parseInt(year)];
+        } else {
+            query = `SELECT category, SUM(amount) AS total
+                     FROM transactions
+                     WHERE telegram_user_id = $1 AND type = 'expense'
+                     GROUP BY category ORDER BY total DESC`;
+            params = [req.telegramUserId];
+        }
+
+        const result = await pool.query(query, params);
         res.json(result.rows);
     } catch (err) {
         console.error('Erreur GET /api/categories-summary:', err.message);
