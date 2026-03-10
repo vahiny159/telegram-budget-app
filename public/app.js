@@ -1003,9 +1003,9 @@ function displayTransactions(transactions) {
 
         const calIcon = '<img src="icons/icon-calendar.svg" alt="Date" width="12" height="12" style="margin-right:4px">';
 
-        const editIcon = '<img src="icons/action-edit.svg" alt="Modifier" width="14" height="14">';
+        const editIcon = '<img src="icons/action-edit.svg" alt="Modifier" width="18" height="18">';
 
-        const deleteIcon = '<img src="icons/action-delete.svg" alt="Supprimer" width="14" height="14">';
+        const deleteIcon = '<img src="icons/action-delete.svg" alt="Supprimer" width="18" height="18">';
 
         return `
             <div class="transaction-item" id="tx-${tx.id}">
@@ -1015,12 +1015,12 @@ function displayTransactions(transactions) {
                     <div class="transaction-description" style="display:flex; align-items:center;">${recurIcon}${tx.description || 'Aucune description'}</div>
                     <div class="transaction-date" style="display:flex; align-items:center;">${calIcon} ${formattedDate}</div>
                 </div>
-                <div style="display:flex; align-items:center; gap:0.4rem;">
+                <div style="display:flex; align-items:center; gap:0.25rem;">
                     <span class="transaction-amount ${amountClass}">
                         ${sign}${formatAmount(tx.amount)}
                     </span>
-                    <button class="btn-edit-icon" onclick="openEditModal(${tx.id})" title="Modifier" style="background:none; border:none; color:var(--text-secondary); cursor:pointer">${editIcon}</button>
-                    <button class="btn-delete-icon" onclick="deleteTransaction(${tx.id})" title="Supprimer" style="background:none; border:none; color:var(--color-expense); cursor:pointer">${deleteIcon}</button>
+                    <button class="btn-action btn-edit-tx" onclick="openEditModal(${tx.id})" title="Modifier">${editIcon}</button>
+                    <button class="btn-action btn-delete-tx" onclick="deleteTransaction(${tx.id})" title="Supprimer">${deleteIcon}</button>
                 </div>
             </div>`;
     }).join('');
