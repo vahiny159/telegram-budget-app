@@ -810,23 +810,29 @@ async function loadDashboard() {
             const pctEl = document.getElementById('globalBudgetPct');
             const statusText = document.getElementById('globalBudgetStatusText');
 
-            bar.style.width = `${barWidth}%`;
+            if (bar) bar.style.width = `${barWidth}%`;
 
             if (percentageRaw >= 100) {
-                bar.style.backgroundColor = 'var(--color-expense)';
-                pctEl.style.color = 'var(--color-expense)';
-                statusText.textContent = 'Dépassement !';
-                statusText.style.color = 'var(--color-expense)';
+                if (bar) bar.style.backgroundColor = 'var(--color-expense)';
+                if (pctEl) pctEl.style.color = 'var(--color-expense)';
+                if (statusText) {
+                    statusText.textContent = 'Dépassement !';
+                    statusText.style.color = 'var(--color-expense)';
+                }
             } else if (percentageRaw >= 85) {
-                bar.style.backgroundColor = '#f59e0b';
-                pctEl.style.color = '#f59e0b';
-                statusText.textContent = 'Attention, budget presque atteint';
-                statusText.style.color = '#f59e0b';
+                if (bar) bar.style.backgroundColor = '#f59e0b';
+                if (pctEl) pctEl.style.color = '#f59e0b';
+                if (statusText) {
+                    statusText.textContent = 'Attention, budget presque atteint';
+                    statusText.style.color = '#f59e0b';
+                }
             } else {
-                bar.style.backgroundColor = 'var(--accent)';
-                pctEl.style.color = 'var(--accent)';
-                statusText.textContent = 'Budget respecté';
-                statusText.style.color = 'var(--text-secondary)';
+                if (bar) bar.style.backgroundColor = 'var(--accent)';
+                if (pctEl) pctEl.style.color = 'var(--accent)';
+                if (statusText) {
+                    statusText.textContent = 'Budget respecté';
+                    statusText.style.color = 'var(--text-secondary)';
+                }
             }
         } else {
             globalCard.style.display = 'none';
