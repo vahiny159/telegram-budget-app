@@ -16,7 +16,7 @@ let telegramInitData = '';
 // Stocke toutes les transactions chargées (pour le filtrage local)
 let allTransactions = [];
 
-// Mois et année actuellement affichés dans le navigateur
+// Mois et année affichés dans le navigateur
 const today = new Date();
 let currentMonth = today.getMonth() + 1; // 1–12
 let currentYear = today.getFullYear();
