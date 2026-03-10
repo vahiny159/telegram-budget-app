@@ -1057,6 +1057,103 @@ function displayCategories(categories, totalExpenses) {
         </div>` : ''}
     `;
 }
+// =========================================
+// CARTE PHARMACIE
+// =========================================
+
+/**
+ * Gère l'affichage de la carte Pharmacie
+ * @param {Array} categories - Dépenses par catégorie
+ * @param {Object} summary - Totaux revenus/dépenses
+ */
+async function loadPharmacieCard(categories, summary) {
+    const pharmacieCard = document.getElementById('pharmacieCard');
+    if (!pharmacieCard || !telegramUserId) return;
+
+    try {
+        // Pour éviter les race conditions avec allTransactions, on fetch
+        const response = await fetch(`/api/transactions?month=${currentMonth}&year=${currentYear}`, {
+            headers: {
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            }
+        });
+
+        let pharmacieTotal = 0;
+        if (response.ok) {
+            const data = await response.json();
+            if (Array.isArray(data)) {
+                pharmacieTotal = data
+                    .filter(tx => tx.category === 'Pharmacie' && tx.type === 'income')
+                    .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+            }
+        }
+
+        const isCurrentMonthView = (
+            currentMonth === (new Date().getMonth() + 1) &&
+            currentYear === new Date().getFullYear()
+        );
+
+        document.getElementById('pharmacieTotal').textContent = formatAmount(pharmacieTotal);
+
+        const deficitBadge = document.getElementById('pharmacieDeficitBadge');
+        const deficitIcon = document.getElementById('pharmacieDeficitIcon');
+        const deficitText = document.getElementById('pharmacieDeficitText');
+        const dailyTargetEl = document.getElementById('pharmacieDailyTarget');
+
+        // Le déficit c'est le manque à gagner si on ne comptait PAS la pharmacie
+        const incomeWithoutPharma = summary.totalIncome - pharmacieTotal;
+        const deficitToCover = summary.totalExpenses - incomeWithoutPharma;
+
+        if (deficitToCover <= 0) {
+            // Pas de déficit
+            deficitBadge.className = 'deficit-badge deficit-surplus';
+            deficitIcon.textContent = '🥳';
+            deficitText.textContent = 'Budget équilibré (sans besoin de pharmacie) !';
+            if (dailyTargetEl) {
+                dailyTargetEl.textContent = '0 Ar';
+                dailyTargetEl.style.color = 'var(--text-secondary)';
+            }
+        } else {
+            // Il y a un déficit à combler
+            const remainingToCover = deficitToCover - pharmacieTotal;
+
+            if (remainingToCover <= 0) {
+                // Comblé !
+                deficitBadge.className = 'deficit-badge deficit-surplus';
+                deficitIcon.textContent = '✅';
+                deficitText.textContent = `Déficit comblé ! (${formatAmount(Math.abs(remainingToCover))} de surplus)`;
+                if (dailyTargetEl) {
+                    dailyTargetEl.textContent = '0 Ar';
+                    dailyTargetEl.style.color = 'var(--text-secondary)';
+                }
+            } else {
+                // Reste à gagner
+                deficitBadge.className = 'deficit-badge deficit-alert';
+                deficitIcon.textContent = '⚠️';
+                deficitText.textContent = `Déficit restant: ${formatAmount(remainingToCover)}`;
+
+                if (dailyTargetEl) {
+                    if (isCurrentMonthView) {
+                        const today = new Date();
+                        const lastDay = new Date(currentYear, currentMonth, 0).getDate();
+                        let daysLeft = lastDay - today.getDate() + 1;
+                        if (daysLeft < 1) daysLeft = 1;
+
+                        const dailyNeeded = remainingToCover / daysLeft;
+                        dailyTargetEl.textContent = formatAmount(Math.ceil(dailyNeeded));
+                        dailyTargetEl.style.color = '#dc2626';
+                    } else {
+                        dailyTargetEl.textContent = '—';
+                        dailyTargetEl.style.color = 'var(--text-secondary)';
+                    }
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Erreur loadPharmacieCard:', err);
+    }
+}
 
 // =========================================
 // HISTORIQUE DES TRANSACTIONS — TABLEAU AVANCÉ
