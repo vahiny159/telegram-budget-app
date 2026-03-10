@@ -587,6 +587,99 @@ app.post('/api/apply-recurring', async (req, res) => {
     }
 });
 
+// =========================================
+// OBJECTIFS D'ÉPARGNE (TIRELIRE)
+// =========================================
+
+// GET /api/goals — Récupérer le ou les objectifs
+app.get('/api/goals', authenticateTelegramParams, async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM goals WHERE telegram_user_id = $1 ORDER BY created_at DESC',
+            [req.telegramUserId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Erreur GET /api/goals:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// POST /api/goals — Créer un nouvel objectif
+app.post('/api/goals', authenticateTelegramJSON, async (req, res) => {
+    const { name, target_amount } = req.body;
+    if (!name || !target_amount || parseFloat(target_amount) <= 0) {
+        return res.status(400).json({ error: 'Données invalides' });
+    }
+
+    try {
+        const result = await pool.query(
+            'INSERT INTO goals (telegram_user_id, name, target_amount, current_amount) VALUES ($1, $2, $3, 0) RETURNING *',
+            [req.telegramUserId, name.trim(), parseFloat(target_amount)]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Erreur POST /api/goals:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// PUT /api/goals/:id/add — Ajouter des fonds à l'objectif
+app.put('/api/goals/:id/add', authenticateTelegramJSON, async (req, res) => {
+    const { amount } = req.body;
+    const { id } = req.params;
+
+    if (!amount || parseFloat(amount) <= 0) {
+        return res.status(400).json({ error: 'Montant invalide' });
+    }
+
+    try {
+        // Demande une transaction SQL pour garantir la cohérence
+        await pool.query('BEGIN');
+
+        // 1. Mettre à jour l'objectif
+        const goalRes = await pool.query(
+            'UPDATE goals SET current_amount = current_amount + $1 WHERE id = $2 AND telegram_user_id = $3 RETURNING *',
+            [parseFloat(amount), id, req.telegramUserId]
+        );
+
+        if (goalRes.rows.length === 0) {
+            await pool.query('ROLLBACK');
+            return res.status(404).json({ error: 'Objectif non trouvé' });
+        }
+
+        const goal = goalRes.rows[0];
+        const date = new Date().toISOString().split('T')[0];
+
+        // 2. Créer une transaction de type "Dépense" pour déduire l'argent du solde global
+        await pool.query(
+            `INSERT INTO transactions (telegram_user_id, type, amount, category, description, date, is_recurring)
+             VALUES ($1, 'expense', $2, 'Épargne Objectif', $3, $4, FALSE)`,
+            [req.telegramUserId, parseFloat(amount), \`Dépôt: \${goal.name}\`, date]
+        );
+        
+        await pool.query('COMMIT');
+        res.json(goal);
+    } catch (err) {
+        await pool.query('ROLLBACK');
+        console.error('Erreur PUT /api/goals/:id/add:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// DELETE /api/goals/:id — Supprimer un objectif
+app.delete('/api/goals/:id', authenticateTelegramParams, async (req, res) => {
+    try {
+        await pool.query(
+            'DELETE FROM goals WHERE id = $1 AND telegram_user_id = $2',
+            [req.params.id, req.telegramUserId]
+        );
+        res.json({ message: 'Objectif supprimé' });
+    } catch (err) {
+        console.error('Erreur DELETE /api/goals/:id:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
 
 // =========================================
 // DÉMARRAGE DU SERVEUR
@@ -595,7 +688,7 @@ async function startServer() {
     await initDatabase();
     app.listen(PORT, () => {
         console.log(`🚀 Serveur démarré sur http://localhost:${PORT}`);
-        console.log(`🔒 Sécurité : Helmet ✅  Rate Limit ✅  Telegram Auth: ${process.env.BOT_TOKEN ? '✅' : '⚠️  désactivée (BOT_TOKEN manquant)'}`);
+            console.log(`🔒 Sécurité : Helmet ✅  Rate Limit ✅  Telegram Auth: ${process.env.BOT_TOKEN ? '✅' : '⚠️  désactivée (BOT_TOKEN manquant)'}`);
     });
 }
 

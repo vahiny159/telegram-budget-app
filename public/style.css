@@ -277,14 +277,28 @@ body {
 .budget-health-card {
     background: linear-gradient(145deg, var(--bg-secondary), var(--bg-primary));
     border: 1px solid var(--accent);
-    box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.1), 0 2px 4px -1px rgba(99, 102, 241, 0.06);
+    box-shadow: 0 4px 6px -1px rgba(236, 72, 153, 0.1), 0 2px 4px -1px rgba(236, 72, 153, 0.06);
     border-radius: var(--radius-lg);
     padding: 1.25rem;
 }
 
 .budget-health-card:hover {
-    box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.2), 0 4px 6px -2px rgba(99, 102, 241, 0.1);
+    box-shadow: 0 10px 15px -3px rgba(236, 72, 153, 0.2), 0 4px 6px -2px rgba(236, 72, 153, 0.1);
     transform: translateY(-3px);
+}
+
+/* Carte Objectif (Tirelire) */
+.goal-card {
+    background: linear-gradient(145deg, #ffffff, #fdf4ff);
+    border: 1px solid #e879f9;
+    box-shadow: 0 4px 6px -1px rgba(232, 121, 249, 0.15);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+}
+
+.goal-card:hover {
+    box-shadow: 0 10px 15px -3px rgba(232, 121, 249, 0.25);
+    transform: translateY(-2px);
 }
 
 .summary-cards {

@@ -80,6 +80,45 @@
         --------------------------- -->
         <section id="tab-content-dashboard" class="tab-content active">
 
+            <!-- Carte : Objectif (Tirelire) -->
+            <button class="btn btn-secondary" id="btnCreateGoal" onclick="openCreateGoalModal()"
+                style="width:100%; margin-bottom: 0.75rem; font-weight: 600; font-size: 0.85rem; border: 1px dashed var(--accent); color: var(--accent);">
+                <span style="font-size: 1.2rem; margin-right: 8px;">🎯</span> Créer un objectif d'épargne
+            </button>
+
+            <div class="card goal-card" id="goalCard" style="display:none; margin-bottom: 0.75rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem">
+                    <div class="card-label"
+                        style="display:flex; align-items:center; color: var(--accent); font-weight: 700; font-size: 0.85rem;">
+                        <span style="font-size: 1.2rem; margin-right: 6px;">🎯</span>
+                        <span id="goalName">Mon Objectif</span>
+                    </div>
+                    <button onclick="deleteGoal()" title="Supprimer l'objectif"
+                        style="background:none; border:none; cursor:pointer; font-size:1.1rem; color: var(--color-expense);">✕</button>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+                    <div>
+                        <span id="goalSaved" style="font-size: 1.4rem; font-weight: 700; color: var(--text-primary)">0
+                            Ar</span>
+                        <span style="font-size: 0.8rem; color: var(--text-secondary)"> / <span id="goalTarget">0
+                                Ar</span></span>
+                    </div>
+                    <span id="goalPct" style="font-size: 1.2rem; font-weight: 600; color: var(--accent)">0%</span>
+                </div>
+
+                <div class="category-bar-container"
+                    style="height: 8px; margin-top: 0.75rem; background: var(--bg-tertiary); border-radius: 4px;">
+                    <div id="goalBar" class="category-bar"
+                        style="width:0%; background-color:var(--accent); border-radius: 4px;"></div>
+                </div>
+
+                <button class="btn btn-primary" onclick="openAddFundsModal()"
+                    style="margin-top: 1rem; width: 100%; font-size: 0.85rem; padding: 0.6rem;">
+                    ➕ Mettre de l'argent de côté
+                </button>
+            </div>
+
             <!-- Carte : Santé globale du Budget -->
             <div class="card budget-health-card" id="globalBudgetCard" onclick="openBudgetModal()"
                 style="display:none; cursor:pointer; margin-bottom: 0.75rem;">
@@ -425,6 +464,59 @@
             <button class="btn btn-primary" onclick="submitEdit()" id="editSubmitBtn" style="flex:2">
                 💾 Enregistrer
             </button>
+        </div>
+    </div>
+
+    <!-- MODAL CRÉER UN OBJECTIF -->
+    <div class="modal-backdrop" id="goalCreateBackdrop" onclick="closeCreateGoalModal()"></div>
+    <div class="edit-modal" id="goalCreateModal" role="dialog" aria-modal="true">
+        <div class="modal-handle-bar"></div>
+        <div class="modal-header">
+            <span>🎯 Nouvel objectif</span>
+            <button class="modal-close-btn" onclick="closeCreateGoalModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Nom de l'objectif (ex: Moto, Vacances)</label>
+                <input type="text" id="newGoalName" class="form-input" placeholder="Ex: Moto" maxlength="50" required />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Montant cible (Ar)</label>
+                <input type="number" id="newGoalTarget" class="form-input" placeholder="Ex: 2400000" step="1" min="1"
+                    required />
+            </div>
+            <div id="goalCreateMessage" class="form-message hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeCreateGoalModal()" style="flex:1">Annuler</button>
+            <button class="btn btn-primary" onclick="submitCreateGoal()" id="goalCreateSubmitBtn"
+                style="flex:2">Créer</button>
+        </div>
+    </div>
+
+    <!-- MODAL AJOUTER DES FONDS -->
+    <div class="modal-backdrop" id="goalAddFundsBackdrop" onclick="closeAddFundsModal()"></div>
+    <div class="edit-modal" id="goalAddFundsModal" role="dialog" aria-modal="true">
+        <div class="modal-handle-bar"></div>
+        <div class="modal-header">
+            <span>💸 Mettre de côté</span>
+            <button class="modal-close-btn" onclick="closeAddFundsModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1rem;">
+                Ce montant sera virtuellement déduit de votre solde du mois pour garantir votre épargne.
+            </p>
+            <div class="form-group">
+                <label class="form-label">Montant à épargner (Ar)</label>
+                <input type="number" id="addFundsAmount" class="form-input" placeholder="Ex: 100000" step="1" min="1"
+                    required />
+            </div>
+            <div id="goalAddFundsMessage" class="form-message hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeAddFundsModal()" style="flex:1">Annuler</button>
+            <button class="btn btn-primary" onclick="submitAddFunds()" id="goalAddFundsSubmitBtn"
+                style="flex:2">Valider</button>
         </div>
     </div>
 

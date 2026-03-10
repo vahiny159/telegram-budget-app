@@ -868,6 +868,9 @@ async function loadDashboard() {
         // --- Mise à jour des catégories ---
         displayCategories(categories, summary.totalExpenses);
 
+        // --- Mise à jour de l'Objectif d'épargne ---
+        await loadGoal();
+
     } catch (err) {
         console.error('Erreur chargement dashboard:', err);
     }
@@ -1231,6 +1234,175 @@ async function applyRecurring(txId) {
     } catch (err) {
         console.error('Erreur applyRecurring:', err);
     }
+}
+
+// =========================================
+// OBJECTIF D'ÉPARGNE (TIRELIRE)
+// =========================================
+let currentGoalId = null;
+
+async function loadGoal() {
+    if (!telegramUserId) return;
+    try {
+        const response = await fetch('/api/goals', {
+            headers: {
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            }
+        });
+        const goals = await response.json();
+
+        const goalCard = document.getElementById('goalCard');
+        const btnCreate = document.getElementById('btnCreateGoal');
+
+        if (goals && goals.length > 0) {
+            const goal = goals[0]; // Prend le plus récent
+            currentGoalId = goal.id;
+
+            goalCard.style.display = 'block';
+            btnCreate.style.display = 'none';
+
+            document.getElementById('goalName').textContent = goal.name;
+            document.getElementById('goalTarget').textContent = formatAmount(goal.target_amount);
+            document.getElementById('goalSaved').textContent = formatAmount(goal.current_amount);
+
+            const pct = Math.min((goal.current_amount / goal.target_amount) * 100, 100).toFixed(1);
+            document.getElementById('goalPct').textContent = pct + '%';
+            document.getElementById('goalBar').style.width = pct + '%';
+        } else {
+            currentGoalId = null;
+            goalCard.style.display = 'none';
+            btnCreate.style.display = 'block';
+        }
+    } catch (err) {
+        console.error('Erreur chargement objectif:', err);
+    }
+}
+
+function openCreateGoalModal() {
+    document.getElementById('goalCreateBackdrop').classList.add('active');
+    document.getElementById('goalCreateModal').classList.add('active');
+    document.getElementById('newGoalName').value = '';
+    document.getElementById('newGoalTarget').value = '';
+    document.getElementById('goalCreateMessage').className = 'form-message hidden';
+}
+
+function closeCreateGoalModal() {
+    document.getElementById('goalCreateBackdrop').classList.remove('active');
+    document.getElementById('goalCreateModal').classList.remove('active');
+}
+
+async function submitCreateGoal() {
+    const name = document.getElementById('newGoalName').value.trim();
+    const target = document.getElementById('newGoalTarget').value;
+    const msgEl = document.getElementById('goalCreateMessage');
+    const btn = document.getElementById('goalCreateSubmitBtn');
+
+    if (!name || !target || parseFloat(target) <= 0) {
+        msgEl.textContent = 'Veuillez remplir correctement les champs.';
+        msgEl.className = 'form-message error';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⏳...';
+
+    try {
+        const response = await fetch('/api/goals', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            },
+            body: JSON.stringify({ name, target_amount: parseFloat(target) })
+        });
+
+        if (response.ok) {
+            closeCreateGoalModal();
+            loadDashboard(); // Recharge le dashboard
+        } else {
+            msgEl.textContent = 'Erreur lors de la création.';
+            msgEl.className = 'form-message error';
+        }
+    } catch (err) {
+        msgEl.textContent = 'Erreur de connexion.';
+        msgEl.className = 'form-message error';
+    }
+    btn.disabled = false;
+    btn.textContent = 'Créer';
+}
+
+function openAddFundsModal() {
+    document.getElementById('goalAddFundsBackdrop').classList.add('active');
+    document.getElementById('goalAddFundsModal').classList.add('active');
+    document.getElementById('addFundsAmount').value = '';
+    document.getElementById('goalAddFundsMessage').className = 'form-message hidden';
+}
+
+function closeAddFundsModal() {
+    document.getElementById('goalAddFundsBackdrop').classList.remove('active');
+    document.getElementById('goalAddFundsModal').classList.remove('active');
+}
+
+async function submitAddFunds() {
+    if (!currentGoalId) return;
+    const amount = document.getElementById('addFundsAmount').value;
+    const msgEl = document.getElementById('goalAddFundsMessage');
+    const btn = document.getElementById('goalAddFundsSubmitBtn');
+
+    if (!amount || parseFloat(amount) <= 0) {
+        msgEl.textContent = 'Veuillez entrer un montant valide.';
+        msgEl.className = 'form-message error';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⏳...';
+
+    try {
+        const response = await fetch('/api/goals/' + currentGoalId + '/add', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            },
+            body: JSON.stringify({ amount: parseFloat(amount) })
+        });
+
+        if (response.ok) {
+            closeAddFundsModal();
+            loadDashboard(); // Recharge tout pour déduire du solde
+        } else {
+            msgEl.textContent = 'Erreur lors de l\'ajout.';
+            msgEl.className = 'form-message error';
+        }
+    } catch (err) {
+        msgEl.textContent = 'Erreur de connexion.';
+        msgEl.className = 'form-message error';
+    }
+    btn.disabled = false;
+    btn.textContent = 'Valider';
+}
+
+async function deleteGoal() {
+    if (!currentGoalId) return;
+    if (!confirm('Voulez-vous supprimer cet objectif ? (L\'argent déjà épargné reste comptabilisé comme dépense).')) return;
+
+    try {
+        const response = await fetch('/api/goals/' + currentGoalId, {
+            method: 'DELETE',
+            headers: {
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            }
+        });
+
+        if (response.ok) {
+            loadDashboard();
+        }
+    } catch (err) { }
 }
 
 // =========================================
