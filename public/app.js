@@ -7,8 +7,11 @@
 // VARIABLES GLOBALES
 // =========================================
 
-// Stocke l'ID Telegram de l'utilisateur
+// Stocke l'ID Telegram de l'utilisateur (pour affichage uniquement)
 let telegramUserId = null;
+
+// Stocke l'initData signé par Telegram (envoyé au backend pour validation)
+let telegramInitData = '';
 
 // Stocke toutes les transactions chargées (pour le filtrage)
 let allTransactions = [];
@@ -82,41 +85,40 @@ function initTelegram() {
 
         // Signale à Telegram que l'app est prête
         tg.ready();
-
-        // Adapte les couleurs de l'app au thème Telegram de l'utilisateur
         tg.expand(); // Ouvre l'app en plein écran
 
-        // Récupère les informations de l'utilisateur
+        // 🔒 Récupère l'initData signé — c'est ce qui prouve l'authenticité
+        //    de l'utilisateur. Le backend va vérifier sa signature HMAC.
+        telegramInitData = tg.initData || '';
+
+        // Récupère les infos utilisateur pour l'affichage (non sécurisé, juste pour l'UI)
         const user = tg.initDataUnsafe?.user;
 
         if (user) {
-            // Utilisateur Telegram identifié
             telegramUserId = user.id.toString();
             const displayName = user.first_name + (user.last_name ? ' ' + user.last_name : '');
             document.getElementById('userName').textContent = '👋 Bonjour, ' + displayName;
-            console.log('✅ Utilisateur Telegram détecté:', telegramUserId, displayName);
+            console.log('✅ Utilisateur Telegram identifié:', telegramUserId);
         } else {
-            // L'app est ouverte dans Telegram mais sans données utilisateur
-            // (cas rare, peut arriver en développement)
             console.warn('⚠️ Données utilisateur Telegram non disponibles');
             useFallbackMode();
         }
     } else {
-        // L'app n'est PAS dans Telegram (ex: ouverture dans un navigateur classique)
+        // L'app est ouverte hors Telegram (navigateur classique = mode développement)
         console.warn('⚠️ Telegram WebApp non détecté - mode développement');
         useFallbackMode();
     }
 }
 
 /**
- * Mode de secours : utilisé quand l'app est ouverte hors Telegram.
- * Utilise un ID fictif pour les tests en local.
+ * Mode de secours pour les tests en local (hors Telegram).
+ * Le backend accepte les requêtes sans validation si BOT_TOKEN n'est pas défini.
  */
 function useFallbackMode() {
-    // ID fictif pour les tests (ne pas utiliser en production)
-    telegramUserId = '12345678';
+    telegramUserId = 'dev-user';
+    telegramInitData = ''; // Vide → le backend bypasse la validation en mode dev
     document.getElementById('userName').textContent = '🖥️ Mode développement local';
-    console.log('🔧 Mode développement activé avec ID:', telegramUserId);
+    console.log('🔧 Mode développement — validation Telegram désactivée côté serveur');
 }
 
 // =========================================
@@ -260,8 +262,10 @@ async function submitTransaction(event) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                // Envoi de l'ID Telegram dans l'en-tête
-                'x-telegram-user-id': telegramUserId
+                // 🔒 On envoie l'initData signé par Telegram (pas juste l'ID)
+                //    Le backend vérifie la signature avant d'accepter la requête
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId  // Fallback mode dev
             },
             body: JSON.stringify({ type, amount: parseFloat(amount), category, description, date })
         });
@@ -320,19 +324,21 @@ async function loadDashboard() {
     if (!telegramUserId) return;
 
     try {
+        // En-têtes communs à toutes les requêtes API (authentification Telegram)
+        const authHeaders = {
+            'x-telegram-init-data': telegramInitData,
+            'x-telegram-user-id': telegramUserId
+        };
+
         // === Chargement du résumé financier ===
-        const summaryRes = await fetch('/api/summary', {
-            headers: { 'x-telegram-user-id': telegramUserId }
-        });
+        const summaryRes = await fetch('/api/summary', { headers: authHeaders });
         const summary = await summaryRes.json();
 
         if (summaryRes.ok) {
-            // Mise à jour des cartes
             document.getElementById('totalIncome').textContent = formatAmount(summary.totalIncome);
             document.getElementById('totalExpenses').textContent = formatAmount(summary.totalExpenses);
             document.getElementById('balance').textContent = formatAmount(summary.balance);
 
-            // Couleur du solde : bleu si positif, rouge si négatif
             const balanceCard = document.getElementById('balanceCard');
             if (summary.balance < 0) {
                 balanceCard.classList.add('negative');
@@ -342,9 +348,7 @@ async function loadDashboard() {
         }
 
         // === Chargement des catégories ===
-        const catRes = await fetch('/api/categories-summary', {
-            headers: { 'x-telegram-user-id': telegramUserId }
-        });
+        const catRes = await fetch('/api/categories-summary', { headers: authHeaders });
         const categories = await catRes.json();
 
         displayCategories(categories, summary.totalExpenses);
@@ -401,7 +405,10 @@ async function loadTransactions() {
 
     try {
         const response = await fetch('/api/transactions', {
-            headers: { 'x-telegram-user-id': telegramUserId }
+            headers: {
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            }
         });
 
         if (!response.ok) throw new Error('Erreur serveur');
@@ -489,7 +496,10 @@ async function deleteTransaction(id) {
     try {
         const response = await fetch('/api/transactions/' + id, {
             method: 'DELETE',
-            headers: { 'x-telegram-user-id': telegramUserId }
+            headers: {
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            }
         });
 
         if (response.ok) {
