@@ -799,17 +799,18 @@ async function loadDashboard() {
 
             const totalExpenses = safeSummary.totalExpenses;
             const percentageRaw = (totalExpenses / totalBudgetLimit) * 100;
-            const percentage = Math.min(percentageRaw, 100).toFixed(1);
+            const percentageText = percentageRaw.toFixed(1);
+            const barWidth = Math.max(0, Math.min(percentageRaw, 100)).toFixed(1);
 
             document.getElementById('globalBudgetSpent').textContent = formatAmount(totalExpenses);
             document.getElementById('globalBudgetLimit').textContent = formatAmount(totalBudgetLimit);
-            document.getElementById('globalBudgetPct').textContent = `${percentage}%`;
+            document.getElementById('globalBudgetPct').textContent = `${percentageText}%`;
 
             const bar = document.getElementById('globalBudgetBar');
             const pctEl = document.getElementById('globalBudgetPct');
             const statusText = document.getElementById('globalBudgetStatusText');
 
-            bar.style.width = `${percentage}%`;
+            bar.style.width = `${barWidth}%`;
 
             if (percentageRaw >= 100) {
                 bar.style.backgroundColor = 'var(--color-expense)';
@@ -915,78 +916,156 @@ async function loadDashboard() {
 }
 
 /**
- * Affiche la liste des dépenses par catégorie avec une barre de progression.
- * @param {Array} categories - Liste des catégories avec leurs totaux
- * @param {number} totalExpenses - Total des dépenses pour calculer le pourcentage
+ * Affiche le tableau de bord budget avec limites journalières.
+ * @param {Array} categories - [{category, total}] — dépenses par catégorie ce mois
+ * @param {number} totalExpenses - Total pour le graphique
  */
 function displayCategories(categories, totalExpenses) {
-    // Met à jour le graphique donut
     updateChart(categories || [], parseFloat(totalExpenses) || 0);
 
     const container = document.getElementById('categoriesList');
     if (!container) return;
 
-    if (!categories || categories.length === 0) {
+    // Séparation : catégories avec et sans budget
+    const withBudget = (categories || []).filter(c => userBudgets[c.category] > 0);
+    const withoutBudget = (categories || []).filter(c => !userBudgets[c.category]);
+
+    // Catégories ayant un budget mais sans dépense ce mois
+    const budgetKeys = Object.keys(userBudgets);
+    const spentKeys = (categories || []).map(c => c.category);
+    const notYetSpent = budgetKeys.filter(k => !spentKeys.includes(k));
+
+    // Jours du mois pour la limite journalière
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isCurrentMonthView = (
+        currentMonth === (new Date().getMonth() + 1) &&
+        currentYear === new Date().getFullYear()
+    );
+
+    // Calcule les dépenses d'aujourd'hui par catégorie depuis allTransactions
+    function spentToday(category) {
+        if (!isCurrentMonthView) return 0;
+        return allTransactions
+            .filter(tx => tx.type === 'expense' &&
+                tx.category === category &&
+                String(tx.date).substring(0, 10) === todayStr)
+            .reduce((s, tx) => s + parseFloat(tx.amount), 0);
+    }
+
+    // Génère une ligne de tableau pour une catégorie avec budget
+    function buildBudgetRow(category, monthTotal) {
+        const total = parseFloat(monthTotal) || 0;
+        const limit = userBudgets[category];
+        const dailyLimit = limit / daysInMonth;
+        const todaySpent = spentToday(category);
+        const monthPct = Math.min((total / limit) * 100, 100);
+
+        // Statut journalier
+        let statusBadge, rowClass;
+        if (!isCurrentMonthView) {
+            // Vue d'un mois passé : statut basé sur le mois entier
+            const overMonth = total > limit;
+            statusBadge = overMonth
+                ? '<span class="budget-status-badge badge-over">Dépassé</span>'
+                : '<span class="budget-status-badge badge-ok">Respecté</span>';
+            rowClass = overMonth ? 'row-over' : 'row-ok';
+        } else if (todaySpent > dailyLimit) {
+            statusBadge = '<span class="budget-status-badge badge-over">🔴 Dépassé</span>';
+            rowClass = 'row-over';
+        } else if (todaySpent > dailyLimit * 0.75) {
+            statusBadge = '<span class="budget-status-badge badge-warn">⚠️ Attention</span>';
+            rowClass = 'row-warn';
+        } else {
+            statusBadge = '<span class="budget-status-badge badge-ok">✅ OK</span>';
+            rowClass = 'row-ok';
+        }
+
+        // Couleur barre mensuelle
+        const barColor = monthPct >= 100 ? '#ef4444'
+            : monthPct >= 85 ? '#f59e0b'
+                : 'var(--accent)';
+
+        return `
+        <tr class="budget-table-row ${rowClass}">
+            <td class="bt-cat">
+                <span class="bt-cat-name">${category}</span>
+            </td>
+            <td class="bt-num">${formatAmount(limit)}</td>
+            <td class="bt-num bt-daily">${formatAmount(Math.round(dailyLimit))}</td>
+            <td class="bt-num ${todaySpent > dailyLimit ? 'bt-over' : ''}">${formatAmount(todaySpent)}</td>
+            <td class="bt-progress-cell">
+                <div class="bt-bar-wrap">
+                    <div class="bt-bar" style="width:${monthPct.toFixed(1)}%; background:${barColor};"></div>
+                </div>
+                <span class="bt-pct">${monthPct.toFixed(0)}%</span>
+            </td>
+            <td class="bt-status">${statusBadge}</td>
+        </tr>`;
+    }
+
+    // Aucune données et aucun budget
+    if (withBudget.length === 0 && notYetSpent.length === 0 && withoutBudget.length === 0) {
         container.innerHTML = '<p class="empty-message">Aucune dépense ce mois.</p>';
         return;
     }
 
-    container.innerHTML = categories.map(cat => {
-        const total = parseFloat(cat.total);
-        const limit = userBudgets[cat.category];
+    // Combine toutes les lignes avec budget
+    const allBudgetRows = [
+        ...withBudget.map(c => buildBudgetRow(c.category, c.total)),
+        ...notYetSpent.map(k => buildBudgetRow(k, 0))
+    ].join('');
 
-        let percentage = 0;
-        let barColor = 'var(--accent)';
-        let budgetInfoHTML = '';
+    const hasBudgetRows = withBudget.length > 0 || notYetSpent.length > 0;
+    const dayLabel = isCurrentMonthView ? `Auj. (${todayStr.split('-')[2]}/${todayStr.split('-')[1]})` : '—';
 
-        if (limit) {
-            // Calcul par rapport au budget défini
-            percentage = Math.round((total / limit) * 100);
-            if (percentage > 100) {
-                percentage = 100;
-                barColor = 'var(--color-expense)'; // Rouge si dépassé
-            } else if (percentage > 85) {
-                barColor = '#f59e0b'; // Orange si presque dépassé
-            }
-            const overage = total - limit;
-            budgetInfoHTML = `
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:4px; display:flex; justify-content:space-between; align-items:center;">
-                    <span>Budget : ${formatAmount(total)} / ${formatAmount(limit)}</span>
-                    ${overage > 0 ? `<span class="budget-overage" style="color:var(--color-expense); font-weight:600">Dépassement: +${formatAmount(overage)}</span>` : ''}
-                </div>
-            `;
-        } else {
-            // Pas de budget défini
-            percentage = totalExpenses > 0 ? Math.round((total / totalExpenses) * 100) : 0;
-            // Mode "Tableau de Bord Budgets" : Afficher un bouton au lieu de pourcentage
-            budgetInfoHTML = `
-                <div style="margin-top: 6px;">
-                    <button class="budget-set-btn" onclick="openBudgetModal()" style="font-size:0.7rem; padding:0.2rem 0.5rem; background:var(--bg-tertiary); border:1px dashed var(--accent); color:var(--accent); border-radius:4px; cursor:pointer;">
-                        + Définir un budget
+    container.innerHTML = `
+        ${hasBudgetRows ? `
+        <div class="budget-table-wrap">
+            <table class="budget-table">
+                <thead>
+                    <tr>
+                        <th class="bt-cat">Catégorie</th>
+                        <th class="bt-num">Limite/mois</th>
+                        <th class="bt-num bt-daily">Limite/jour</th>
+                        <th class="bt-num">${dayLabel}</th>
+                        <th class="bt-progress-cell">Ce mois</th>
+                        <th class="bt-status">Statut</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${allBudgetRows}
+                </tbody>
+            </table>
+        </div>` : ''}
+
+        ${withoutBudget.length > 0 ? `
+        <div style="margin-top:${hasBudgetRows ? '1rem' : '0'};">
+            <div style="font-size:0.75rem; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.5rem;">
+                Sans budget défini
+            </div>
+            ${withoutBudget.map(cat => `
+            <div class="category-item" style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid var(--border);">
+                <span style="font-size:0.88rem; color:var(--text-primary);">${cat.category}</span>
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span style="font-weight:600; font-size:0.9rem;">${formatAmount(parseFloat(cat.total))}</span>
+                    <button onclick="openBudgetModal()" style="font-size:0.7rem; padding:0.15rem 0.45rem; background:var(--bg-tertiary); border:1px dashed var(--accent); color:var(--accent); border-radius:4px; cursor:pointer; font-family:inherit;">
+                        + Définir
                     </button>
                 </div>
-            `;
-        }
-
-        return `
-            <div class="category-item">
-                <div class="category-header">
-                    <span class="category-name">${cat.category}</span>
-                    <span class="category-amount" style="font-weight: 600;">${formatAmount(total)}</span>
-                </div>
-                ${budgetInfoHTML}
-                ${limit ? `
-                <div class="category-bar-container" style="margin-top:0.4rem; height:6px;">
-                    <div class="category-bar" style="width: ${percentage}%; background-color: ${barColor}"></div>
-                </div>` : ''}
-            </div>
-        `;
-    }).join('');
+            </div>`).join('')}
+        </div>` : ''}
+    `;
 }
 
 // =========================================
-// HISTORIQUE DES TRANSACTIONS
+// HISTORIQUE DES TRANSACTIONS — TABLEAU AVANCÉ
 // =========================================
+
+// État des filtres et du tri
+let txFilter = { type: 'all', category: '' };
+let txSort = 'date-desc';
+let selectedTxIds = new Set();
 
 /**
  * Charge et affiche toutes les transactions de l'utilisateur.
@@ -994,7 +1073,7 @@ function displayCategories(categories, totalExpenses) {
 async function loadTransactions() {
     if (!telegramUserId) return;
 
-    const container = document.getElementById('transactionsList');
+    const tbody = document.getElementById('transactionsList');
 
     try {
         const response = await fetch(
@@ -1007,130 +1086,230 @@ async function loadTransactions() {
             }
         );
 
-        // Vérifier la réponse HTTP
         if (!response.ok) {
             let errorText = '';
-            try {
-                errorText = await response.text();
-            } catch {
-                errorText = 'Impossible de lire la réponse serveur';
-            }
-
+            try { errorText = await response.text(); } catch { errorText = ''; }
             throw new Error(`HTTP ${response.status} - ${errorText}`);
         }
 
         const data = await response.json();
+        allTransactions = Array.isArray(data) ? data : [];
 
-        // Sécurité : vérifier que c'est bien un tableau
-        if (!Array.isArray(data)) {
-            console.warn('Transactions inattendues:', data);
-            allTransactions = [];
-        } else {
-            allTransactions = data;
-        }
+        // Peuple le filtre catégorie
+        populateCategoryFilter();
 
-        // Affichage
-        displayTransactions(allTransactions);
+        // Réinitialise la sélection
+        selectedTxIds.clear();
+        updateSelectionBar();
+
+        // Affiche avec les filtres courants
+        applyTxFilters();
 
     } catch (err) {
         console.error('Erreur chargement transactions:', err);
-
-        let message = '❌ Erreur de chargement des transactions.';
-
-        const msg = String(err.message || '');
-
-        if (msg.includes('401')) {
-            message = '🔒 Session Telegram expirée. Fermez puis rouvrez la Mini App.';
-        }
-        else if (msg.includes('429')) {
-            message = '⏳ Trop de requêtes envoyées. Attendez quelques secondes.';
-        }
-        else if (msg.includes('500')) {
-            message = '⚠️ Erreur serveur. Réessayez dans un instant.';
-        }
-        else if (msg.includes('Failed to fetch')) {
-            message = '🌐 Impossible de contacter le serveur.';
-        }
-        else {
-            message = '❌ Erreur de chargement. Vérifiez votre connexion.';
-        }
-
-        if (container) {
-            container.innerHTML = `<p class="empty-message">${message}</p>`;
-        }
+        if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="tx-empty">❌ Erreur de chargement.</td></tr>`;
     }
 }
 
 /**
- * Affiche une liste de transactions dans l'interface.
- * @param {Array} transactions - Les transactions à afficher
+ * Peuple dynamiquement le <select> de filtre catégorie.
+ */
+function populateCategoryFilter() {
+    const sel = document.getElementById('txCategoryFilter');
+    if (!sel) return;
+    const cats = [...new Set(allTransactions.map(tx => tx.category))].sort();
+    sel.innerHTML = '<option value="">Toutes catégories</option>' +
+        cats.map(c => `<option value="${c}"${txFilter.category === c ? ' selected' : ''}>${c}</option>`).join('');
+}
+
+/**
+ * Définit un filtre (type ou category) et re-render.
+ */
+function setTxFilter(key, value, btn) {
+    txFilter[key] = value;
+    if (key === 'type' && btn) {
+        document.querySelectorAll('#txTypePills .filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    selectedTxIds.clear();
+    updateSelectionBar();
+    applyTxFilters();
+}
+
+/**
+ * Définit le tri et re-render.
+ */
+function setTxSort(value) {
+    txSort = value;
+    applyTxFilters();
+}
+
+/**
+ * Applique les filtres et le tri, puis affiche le tableau.
+ */
+function applyTxFilters() {
+    let txs = [...allTransactions];
+
+    // Filtre type
+    if (txFilter.type === 'income') txs = txs.filter(t => t.type === 'income');
+    if (txFilter.type === 'expense') txs = txs.filter(t => t.type === 'expense');
+
+    // Filtre catégorie
+    if (txFilter.category) txs = txs.filter(t => t.category === txFilter.category);
+
+    // Tri
+    txs.sort((a, b) => {
+        if (txSort === 'date-desc') return new Date(b.date) - new Date(a.date);
+        if (txSort === 'date-asc') return new Date(a.date) - new Date(b.date);
+        if (txSort === 'amount-desc') return parseFloat(b.amount) - parseFloat(a.amount);
+        if (txSort === 'amount-asc') return parseFloat(a.amount) - parseFloat(b.amount);
+        return 0;
+    });
+
+    displayTransactions(txs);
+}
+
+/**
+ * Affiche les transactions comme des lignes de tableau <tr>.
  */
 function displayTransactions(transactions) {
-    const container = document.getElementById('transactionsList');
+    const tbody = document.getElementById('transactionsList');
+    if (!tbody) return;
 
     if (!transactions || transactions.length === 0) {
-        container.innerHTML = '<p class="empty-message">Aucune transaction enregistrée.<br>Utilisez l\'onglet ➕ Ajouter !</p>';
+        tbody.innerHTML = '<tr><td colspan="6" class="tx-empty">Aucune transaction pour ce filtre.</td></tr>';
+        document.getElementById('txSelectAll').checked = false;
         return;
     }
 
-    container.innerHTML = transactions.map(tx => {
+    tbody.innerHTML = transactions.map(tx => {
         const isIncome = tx.type === 'income';
-        const icon = isIncome
-            ? '<img src="icons/icon-income.svg" alt="Revenu" width="16" height="16" class="feather">'
-            : '<img src="icons/icon-expense.svg" alt="Dépense" width="16" height="16" class="feather">';
         const sign = isIncome ? '+' : '-';
-        const amountClass = isIncome ? 'income' : 'expense';
-        const formattedDate = formatDate(tx.date);
-
-        const recurIcon = tx.is_recurring
-            ? '<img src="icons/icon-recurring.svg" alt="Récurrent" width="12" height="12" style="margin-right:4px; vertical-align:text-bottom">'
+        const amountClass = isIncome ? 'tx-amount-income' : 'tx-amount-expense';
+        const rowClass = isIncome ? 'tx-row-income' : 'tx-row-expense';
+        const dateStr = String(tx.date).substring(0, 10);
+        const [y, m, d] = dateStr.split('-');
+        const formattedDate = `${d}/${m}/${y}`;
+        const checked = selectedTxIds.has(tx.id) ? 'checked' : '';
+        const selectedClass = selectedTxIds.has(tx.id) ? 'tx-row-selected' : '';
+        const recurBadge = tx.is_recurring
+            ? '<span class="tx-recur-badge" title="Récurrent">🔄</span>'
             : '';
 
-        const calIcon = '<img src="icons/icon-calendar.svg" alt="Date" width="12" height="12" style="margin-right:4px">';
-
-        const editIcon = '<img src="icons/action-edit.svg" alt="Modifier" width="18" height="18">';
-
-        const deleteIcon = '<img src="icons/action-delete.svg" alt="Supprimer" width="18" height="18">';
-
         return `
-            <div class="transaction-item" id="tx-${tx.id}">
-                <span class="transaction-icon" style="background:var(--bg-secondary)">${icon}</span>
-                <div class="transaction-info">
-                    <div class="transaction-category">${tx.category}</div>
-                    <div class="transaction-description" style="display:flex; align-items:center;">${recurIcon}${tx.description || 'Aucune description'}</div>
-                    <div class="transaction-date" style="display:flex; align-items:center;">${calIcon} ${formattedDate}</div>
-                </div>
-                <div style="display:flex; align-items:center; gap:0.25rem;">
-                    <span class="transaction-amount ${amountClass}">
-                        ${sign}${formatAmount(tx.amount)}
-                    </span>
-                    <button class="btn-action btn-edit-tx" onclick="openEditModal(${tx.id})" title="Modifier">${editIcon}</button>
-                    <button class="btn-action btn-delete-tx" onclick="deleteTransaction(${tx.id})" title="Supprimer">${deleteIcon}</button>
-                </div>
-            </div>`;
+        <tr class="tx-table-row ${rowClass} ${selectedClass}" id="tx-row-${tx.id}">
+            <td class="tx-td-check">
+                <input type="checkbox" class="tx-checkbox" onchange="toggleTxSelect(${tx.id}, this)" ${checked}>
+            </td>
+            <td class="tx-td-date">${formattedDate}</td>
+            <td class="tx-td-cat">
+                <span class="tx-cat-pill ${isIncome ? 'pill-income' : 'pill-expense'}">${tx.category}</span>
+            </td>
+            <td class="tx-td-desc">${recurBadge}${tx.description || '—'}</td>
+            <td class="tx-td-amount ${amountClass}">${sign}${formatAmount(tx.amount)}</td>
+            <td class="tx-td-actions">
+                <button class="btn-action btn-edit-tx" onclick="openEditModal(${tx.id})" title="Modifier">
+                    <img src="icons/action-edit.svg" alt="Modifier" width="16" height="16">
+                </button>
+                <button class="btn-action btn-delete-tx" onclick="deleteTransaction(${tx.id})" title="Supprimer">
+                    <img src="icons/action-delete.svg" alt="Supprimer" width="16" height="16">
+                </button>
+            </td>
+        </tr>`;
     }).join('');
 }
 
 /**
- * Filtre l'historique par type de transaction.
- * @param {string} filter - 'all', 'income' ou 'expense'
- * @param {HTMLElement} clickedBtn - Le bouton cliqué (pour le style actif)
+ * Coche/décoche une ligne et met à jour la barre de sélection.
  */
-function filterHistory(filter, clickedBtn) {
-    // Met à jour le style des boutons de filtre
-    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-    clickedBtn.classList.add('active');
-
-    // Filtre les transactions
-    let filtered = allTransactions;
-    if (filter === 'income') {
-        filtered = allTransactions.filter(tx => tx.type === 'income');
-    } else if (filter === 'expense') {
-        filtered = allTransactions.filter(tx => tx.type === 'expense');
+function toggleTxSelect(id, checkbox) {
+    if (checkbox.checked) {
+        selectedTxIds.add(id);
+        document.getElementById(`tx-row-${id}`)?.classList.add('tx-row-selected');
+    } else {
+        selectedTxIds.delete(id);
+        document.getElementById(`tx-row-${id}`)?.classList.remove('tx-row-selected');
     }
-
-    displayTransactions(filtered);
+    updateSelectionBar();
 }
+
+/**
+ * Coche/décoche toutes les lignes visibles.
+ */
+function toggleSelectAll(masterCheckbox) {
+    const checkboxes = document.querySelectorAll('#transactionsList .tx-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = masterCheckbox.checked;
+        const id = parseInt(cb.closest('tr').id.replace('tx-row-', ''));
+        if (masterCheckbox.checked) {
+            selectedTxIds.add(id);
+            cb.closest('tr')?.classList.add('tx-row-selected');
+        } else {
+            selectedTxIds.delete(id);
+            cb.closest('tr')?.classList.remove('tx-row-selected');
+        }
+    });
+    updateSelectionBar();
+}
+
+/**
+ * Met à jour la barre de sélection (affiche le bouton de suppression).
+ */
+function updateSelectionBar() {
+    const bar = document.getElementById('txSelectionBar');
+    const count = document.getElementById('txSelectionCount');
+    if (!bar) return;
+    if (selectedTxIds.size > 0) {
+        bar.classList.remove('hidden');
+        count.textContent = `${selectedTxIds.size} sélectionné(s)`;
+    } else {
+        bar.classList.add('hidden');
+    }
+}
+
+/**
+ * Supprime toutes les transactions sélectionnées en une seule requête.
+ */
+async function bulkDeleteTransactions() {
+    if (selectedTxIds.size === 0) return;
+    const n = selectedTxIds.size;
+    if (!confirm(`Supprimer ${n} transaction${n > 1 ? 's' : ''} ? Cette action est irréversible.`)) return;
+
+    try {
+        const response = await fetch('/api/transactions/bulk', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            },
+            body: JSON.stringify({ ids: [...selectedTxIds] })
+        });
+
+        if (response.ok) {
+            if (window.Telegram?.WebApp?.HapticFeedback) {
+                window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+            }
+            selectedTxIds.clear();
+            loadTransactions();
+            loadDashboard();
+        } else {
+            const err = await response.json();
+            alert('❌ ' + (err.error || 'Erreur lors de la suppression.'));
+        }
+    } catch {
+        alert('❌ Erreur de connexion.');
+    }
+}
+
+// Compatibilité : filterHistory() est conservé pour les anciens appels
+function filterHistory(filter, btn) {
+    setTxFilter('type', filter, btn);
+}
+
+
+
+
 
 /**
  * Supprime une transaction après confirmation.
@@ -1706,4 +1885,3 @@ function formatDate(rawDate) {
         year: 'numeric'
     });
 }
-

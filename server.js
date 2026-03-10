@@ -326,20 +326,39 @@ app.post('/api/transactions', async (req, res) => {
 app.delete('/api/transactions/:id', async (req, res) => {
     const { id } = req.params;
 
-    // Vérifie que l'id est bien un nombre (évite les injections SQL)
     if (isNaN(parseInt(id, 10))) {
         return res.status(400).json({ error: 'ID invalide' });
     }
 
     try {
-        const result = await pool.query(
-            'DELETE FROM transactions WHERE id = $1 AND telegram_user_id = $2 RETURNING *',
+        // Récupère la transaction avant suppression pour vérifier la catégorie
+        const txRes = await pool.query(
+            'SELECT * FROM transactions WHERE id = $1 AND telegram_user_id = $2',
             [id, req.telegramUserId]
         );
-        if (result.rows.length === 0) {
+        if (txRes.rows.length === 0) {
             return res.status(404).json({ error: 'Transaction non trouvée ou non autorisée' });
         }
-        res.json({ message: 'Transaction supprimée', transaction: result.rows[0] });
+        const tx = txRes.rows[0];
+
+        // Supprime la transaction
+        await pool.query(
+            'DELETE FROM transactions WHERE id = $1 AND telegram_user_id = $2',
+            [id, req.telegramUserId]
+        );
+
+        // Si c'était un dépôt dans la tirelire → on décrémente le goal
+        if (tx.category === 'Épargne Objectif') {
+            await pool.query(
+                `UPDATE goals
+                 SET current_amount = GREATEST(0, current_amount - $1)
+                 WHERE telegram_user_id = $2
+                 ORDER BY id DESC LIMIT 1`,
+                [parseFloat(tx.amount), req.telegramUserId]
+            ).catch(() => { }); // Silencieux si pas de goal
+        }
+
+        res.json({ message: 'Transaction supprimée', transaction: tx });
     } catch (err) {
         console.error('Erreur DELETE /api/transactions:', err.message);
         res.status(500).json({ error: 'Erreur serveur' });
@@ -598,6 +617,53 @@ app.post('/api/apply-recurring', async (req, res) => {
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
+
+// DELETE /api/transactions/bulk — Supprimer plusieurs transactions à la fois
+app.delete('/api/transactions/bulk', telegramAuthMiddleware, async (req, res) => {
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'Liste d\'IDs invalide' });
+    }
+
+    // Vérifier que tous les IDs sont des entiers valides
+    const safeIds = ids.map(id => parseInt(id)).filter(id => !isNaN(id));
+    if (safeIds.length === 0) {
+        return res.status(400).json({ error: 'Aucun ID valide fourni' });
+    }
+
+    try {
+        const result = await pool.query(
+            `DELETE FROM transactions
+             WHERE id = ANY($1::int[])
+               AND telegram_user_id = $2
+             RETURNING *`,
+            [safeIds, req.telegramUserId]
+        );
+
+        // Si certaines transactions supprimées étaient des dépôts tirelire,
+        // décrémente le goal en conséquence
+        const savingsTotal = result.rows
+            .filter(r => r.category === 'Épargne Objectif')
+            .reduce((sum, r) => sum + parseFloat(r.amount), 0);
+
+        if (savingsTotal > 0) {
+            await pool.query(
+                `UPDATE goals
+                 SET current_amount = GREATEST(0, current_amount - $1)
+                 WHERE telegram_user_id = $2
+                 ORDER BY id DESC LIMIT 1`,
+                [savingsTotal, req.telegramUserId]
+            ).catch(() => { });
+        }
+
+        res.json({ deleted: result.rowCount, ids: result.rows.map(r => r.id) });
+    } catch (err) {
+        console.error('Erreur DELETE /api/transactions/bulk:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 
 // =========================================
 // OBJECTIFS D'ÉPARGNE (TIRELIRE)

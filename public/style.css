@@ -712,8 +712,360 @@ body {
 }
 
 /* =========================================
-   HISTORIQUE DES TRANSACTIONS
+   TABLEAU BUDGET JOURNALIER
    ========================================= */
+.budget-table-wrap {
+    overflow-x: auto;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    margin-bottom: 0.25rem;
+}
+
+.budget-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    font-family: 'Inter', sans-serif;
+}
+
+.budget-table thead tr {
+    background: var(--bg-tertiary);
+    border-bottom: 2px solid var(--border);
+}
+
+.budget-table th {
+    padding: 0.55rem 0.6rem;
+    text-align: right;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.budget-table th.bt-cat {
+    text-align: left;
+}
+
+.budget-table th.bt-status {
+    text-align: center;
+}
+
+/* Lignes */
+.budget-table-row {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.2s;
+}
+
+.budget-table-row.row-ok {
+    background: #f0fdf4;
+}
+
+.budget-table-row.row-warn {
+    background: #fffbeb;
+}
+
+.budget-table-row.row-over {
+    background: #fff1f2;
+}
+
+.budget-table-row:last-child {
+    border-bottom: none;
+}
+
+/* Cellules */
+.budget-table td {
+    padding: 0.55rem 0.6rem;
+    text-align: right;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.budget-table td.bt-cat {
+    text-align: left;
+}
+
+.budget-table td.bt-status {
+    text-align: center;
+}
+
+.bt-cat-name {
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+
+/* Colonne limite journalière — mise en avant */
+.budget-table th.bt-daily,
+.budget-table td.bt-daily {
+    color: var(--accent);
+    font-weight: 700;
+}
+
+/* Montant dépassé en rouge */
+.bt-over {
+    color: #dc2626;
+    font-weight: 700;
+}
+
+/* Cellule barre de progression */
+.bt-progress-cell {
+    min-width: 80px;
+}
+
+.bt-bar-wrap {
+    height: 5px;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 2px;
+}
+
+.bt-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+.bt-pct {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+/* Badges de statut */
+.budget-status-badge {
+    display: inline-block;
+    padding: 0.2rem 0.45rem;
+    border-radius: 20px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.badge-ok {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.badge-warn {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge-over {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* =========================================
+   HISTORIQUE — TABLEAU AVANCÉ
+   ========================================= */
+
+/* Barre de filtres */
+.tx-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    align-items: center;
+}
+
+.filter-pills {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: nowrap;
+}
+
+.tx-cat-filter {
+    font-size: 0.8rem !important;
+    padding: 0.35rem 0.6rem !important;
+    height: auto !important;
+    min-width: 120px;
+    max-width: 160px;
+    border-radius: 20px !important;
+}
+
+/* Barre de sélection */
+.tx-selection-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.875rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #92400e;
+}
+
+.btn-bulk-delete {
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.3rem 0.75rem;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: background 0.2s;
+}
+
+.btn-bulk-delete:hover {
+    background: #dc2626;
+}
+
+/* Tableau */
+.tx-table-wrap {
+    overflow-x: auto;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.tx-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    font-family: 'Inter', sans-serif;
+}
+
+.tx-table thead tr {
+    background: var(--bg-tertiary);
+    border-bottom: 2px solid var(--border);
+}
+
+.tx-table th {
+    padding: 0.5rem 0.6rem;
+    text-align: left;
+    font-weight: 700;
+    color: var(--text-secondary);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.tx-th-right {
+    text-align: right;
+}
+
+.tx-th-center {
+    text-align: center;
+}
+
+.tx-th-check {
+    width: 32px;
+    text-align: center;
+}
+
+.tx-table-row {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+}
+
+.tx-table-row:last-child {
+    border-bottom: none;
+}
+
+.tx-row-income {
+    background: #f0fdf4;
+}
+
+.tx-row-expense {
+    background: var(--bg-primary);
+}
+
+.tx-row-selected {
+    background: #fef3c7 !important;
+}
+
+.tx-table td {
+    padding: 0.5rem 0.6rem;
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+.tx-td-check {
+    text-align: center;
+    width: 32px;
+}
+
+.tx-td-date {
+    white-space: nowrap;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.tx-td-desc {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tx-td-amount {
+    text-align: right;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.tx-td-actions {
+    text-align: center;
+    white-space: nowrap;
+}
+
+.tx-amount-income {
+    color: #059669;
+}
+
+.tx-amount-expense {
+    color: #dc2626;
+}
+
+.tx-cat-pill {
+    display: inline-block;
+    padding: 0.15rem 0.45rem;
+    border-radius: 20px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.pill-income {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.pill-expense {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.tx-recur-badge {
+    font-size: 0.7rem;
+    margin-right: 3px;
+}
+
+.tx-empty {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 2rem 1rem;
+    font-size: 0.88rem;
+}
+
+.tx-checkbox {
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    accent-color: var(--accent);
+}
+
+/* Ancien .filter-bar conservé pour compatibilité */
 .filter-bar {
     display: flex;
     gap: 0.5rem;

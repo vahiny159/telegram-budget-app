@@ -162,20 +162,17 @@
                 </div>
 
                 <!-- Chiffres clés -->
-                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem; margin-bottom:0.75rem;">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-bottom:0.75rem;">
                     <div class="pharmacie-stat">
                         <div class="pharmacie-stat-label">Total ce mois</div>
                         <div class="pharmacie-stat-value" id="pharmacieTotal">0 Ar</div>
-                    </div>
-                    <div class="pharmacie-stat">
-                        <div class="pharmacie-stat-label">Moyenne / jour</div>
-                        <div class="pharmacie-stat-value" id="pharmacieAvg">0 Ar</div>
                     </div>
                     <div class="pharmacie-stat">
                         <div class="pharmacie-stat-label">⚡ À gagner/jour</div>
                         <div class="pharmacie-stat-value" id="pharmacieDailyTarget" style="color:#dc2626;">0 Ar</div>
                     </div>
                 </div>
+
 
                 <!-- Badge Déficit -->
                 <div id="pharmacieDeficitBadge" class="deficit-badge deficit-pending">
@@ -412,16 +409,60 @@
                 Historique des transactions
             </h2>
 
-            <!-- Filtre par type -->
-            <div class="filter-bar">
-                <button class="filter-btn active" onclick="filterHistory('all', this)">Tous</button>
-                <button class="filter-btn" onclick="filterHistory('income', this)">Revenus</button>
-                <button class="filter-btn" onclick="filterHistory('expense', this)">Dépenses</button>
+            <!-- Barre de filtres avancée -->
+            <div class="tx-filter-bar">
+                <!-- Filtre Type -->
+                <div class="filter-pills" id="txTypePills">
+                    <button class="filter-btn active" onclick="setTxFilter('type','all',this)">Tous</button>
+                    <button class="filter-btn" onclick="setTxFilter('type','income',this)">💚 Revenus</button>
+                    <button class="filter-btn" onclick="setTxFilter('type','expense',this)">🔴 Dépenses</button>
+                </div>
+
+                <!-- Filtre catégorie -->
+                <select id="txCategoryFilter" class="form-input form-select tx-cat-filter"
+                    onchange="setTxFilter('category', this.value, null)">
+                    <option value="">Toutes catégories</option>
+                </select>
+
+                <!-- Tri -->
+                <select id="txSortSelect" class="form-input form-select tx-cat-filter" onchange="setTxSort(this.value)">
+                    <option value="date-desc">Date ↓</option>
+                    <option value="date-asc">Date ↑</option>
+                    <option value="amount-desc">Montant ↓</option>
+                    <option value="amount-asc">Montant ↑</option>
+                </select>
             </div>
 
-            <!-- Liste des transactions -->
-            <div id="transactionsList">
-                <p class="empty-message">Aucune transaction enregistrée.</p>
+            <!-- Barre de sélection (apparaît quand ≥1 case cochée) -->
+            <div id="txSelectionBar" class="tx-selection-bar hidden">
+                <span id="txSelectionCount">0 sélectionné(s)</span>
+                <button class="btn-bulk-delete" onclick="bulkDeleteTransactions()">
+                    🗑️ Supprimer la sélection
+                </button>
+            </div>
+
+            <!-- Tableau des transactions -->
+            <div class="tx-table-wrap" id="transactionsTableWrap">
+                <table class="tx-table" id="txTable">
+                    <thead>
+                        <tr>
+                            <th class="tx-th-check">
+                                <input type="checkbox" id="txSelectAll" onchange="toggleSelectAll(this)"
+                                    title="Tout sélectionner">
+                            </th>
+                            <th>Date</th>
+                            <th>Catégorie</th>
+                            <th>Description</th>
+                            <th class="tx-th-right">Montant</th>
+                            <th class="tx-th-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsList">
+                        <tr>
+                            <td colspan="6" class="tx-empty">Aucune transaction.</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </section>
 
