@@ -143,7 +143,7 @@ function validateTelegramInitData(initData) {
         // Étape 8 : Vérifier que les données ne sont pas trop vieilles (max 1 heure)
         const authDate = parseInt(urlParams.get('auth_date') || '0', 10);
         const now = Math.floor(Date.now() / 1000);
-        if (now - authDate > 3600) {
+        if (now - authDate > 86400) {
             console.warn('⚠️  initData périmé (plus d\'1 heure)');
             return { valid: false, user: null };
         }

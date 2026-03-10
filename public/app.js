@@ -708,20 +708,21 @@ async function loadDashboard() {
     if (!telegramUserId) return;
 
     try {
-        // En-têtes d'authentification + filtrage par mois
         const authHeaders = {
             'x-telegram-init-data': telegramInitData,
             'x-telegram-user-id': telegramUserId
         };
+
         const monthParams = `month=${currentMonth}&year=${currentYear}`;
 
-        // Calcul du mois précédent pour la comparaison
         let prevMonth = currentMonth - 1;
         let prevYear = currentYear;
-        if (prevMonth === 0) { prevMonth = 12; prevYear--; }
+        if (prevMonth === 0) {
+            prevMonth = 12;
+            prevYear--;
+        }
         const prevMonthParams = `month=${prevMonth}&year=${prevYear}`;
 
-        // === Chargement en parallèle ===
         const [summaryRes, prevSummaryRes, catRes, budgetRes, pendingRes] = await Promise.all([
             fetch(`/api/summary?${monthParams}`, { headers: authHeaders }),
             fetch(`/api/summary?${prevMonthParams}`, { headers: authHeaders }),
@@ -730,107 +731,135 @@ async function loadDashboard() {
             fetch(`/api/pending-recurring?${monthParams}`, { headers: authHeaders })
         ]);
 
+        const responses = [
+            { name: 'summary', res: summaryRes },
+            { name: 'prevSummary', res: prevSummaryRes },
+            { name: 'categories', res: catRes },
+            { name: 'budgets', res: budgetRes },
+            { name: 'pending', res: pendingRes }
+        ];
+
+        for (const { name, res } of responses) {
+            if (!res.ok) {
+                let errorText = '';
+                try {
+                    errorText = await res.text();
+                } catch {
+                    errorText = 'Impossible de lire la réponse serveur';
+                }
+                throw new Error(`HTTP ${res.status} on ${name} - ${errorText}`);
+            }
+        }
+
         const summary = await summaryRes.json();
         const prevSummary = await prevSummaryRes.json();
         const categories = await catRes.json();
         const budgets = await budgetRes.json();
         const pending = await pendingRes.json();
 
-        // Stockage global des budgets (pour y accéder depuis d'autres fonctions)
+        const safeSummary = {
+            totalIncome: parseFloat(summary?.totalIncome) || 0,
+            totalExpenses: parseFloat(summary?.totalExpenses) || 0,
+            balance: parseFloat(summary?.balance) || 0
+        };
+
+        const safePrevSummary = {
+            totalIncome: parseFloat(prevSummary?.totalIncome) || 0,
+            totalExpenses: parseFloat(prevSummary?.totalExpenses) || 0,
+            balance: parseFloat(prevSummary?.balance) || 0
+        };
+
+        const safeCategories = Array.isArray(categories) ? categories : [];
+        const safeBudgets = Array.isArray(budgets) ? budgets : [];
+        const safePending = Array.isArray(pending) ? pending : [];
+
         userBudgets = {};
-        if (Array.isArray(budgets)) {
-            budgets.forEach(b => userBudgets[b.category] = parseFloat(b.monthly_limit));
+        safeBudgets.forEach(b => {
+            userBudgets[b.category] = parseFloat(b.monthly_limit) || 0;
+        });
+
+        document.getElementById('totalIncome').textContent = formatAmount(safeSummary.totalIncome);
+        document.getElementById('totalExpenses').textContent = formatAmount(safeSummary.totalExpenses);
+        document.getElementById('balance').textContent = formatAmount(safeSummary.balance);
+
+        const balanceCard = document.getElementById('balanceCard');
+        if (safeSummary.balance < 0) {
+            balanceCard.classList.add('negative');
+        } else {
+            balanceCard.classList.remove('negative');
         }
 
-        // --- Mise à jour du résumé ---
-        if (summaryRes.ok) {
-            document.getElementById('totalIncome').textContent = formatAmount(summary.totalIncome);
-            document.getElementById('totalExpenses').textContent = formatAmount(summary.totalExpenses);
-            document.getElementById('balance').textContent = formatAmount(summary.balance);
+        const globalCard = document.getElementById('globalBudgetCard');
+        let totalBudgetLimit = 0;
 
-            const balanceCard = document.getElementById('balanceCard');
-            if (summary.balance < 0) {
-                balanceCard.classList.add('negative');
+        safeBudgets.forEach(b => {
+            totalBudgetLimit += parseFloat(b.monthly_limit) || 0;
+        });
+
+        if (totalBudgetLimit > 0) {
+            globalCard.style.display = 'block';
+
+            const totalExpenses = safeSummary.totalExpenses;
+            const percentageRaw = (totalExpenses / totalBudgetLimit) * 100;
+            const percentage = Math.min(percentageRaw, 100).toFixed(1);
+
+            document.getElementById('globalBudgetSpent').textContent = formatAmount(totalExpenses);
+            document.getElementById('globalBudgetLimit').textContent = formatAmount(totalBudgetLimit);
+            document.getElementById('globalBudgetPct').textContent = `${percentage}%`;
+
+            const bar = document.getElementById('globalBudgetBar');
+            const pctEl = document.getElementById('globalBudgetPct');
+            const statusText = document.getElementById('globalBudgetStatusText');
+
+            bar.style.width = `${percentage}%`;
+
+            if (percentageRaw >= 100) {
+                bar.style.backgroundColor = 'var(--color-expense)';
+                pctEl.style.color = 'var(--color-expense)';
+                statusText.textContent = 'Dépassement !';
+                statusText.style.color = 'var(--color-expense)';
+            } else if (percentageRaw >= 85) {
+                bar.style.backgroundColor = '#f59e0b';
+                pctEl.style.color = '#f59e0b';
+                statusText.textContent = 'Attention, budget presque atteint';
+                statusText.style.color = '#f59e0b';
             } else {
-                balanceCard.classList.remove('negative');
+                bar.style.backgroundColor = 'var(--accent)';
+                pctEl.style.color = 'var(--accent)';
+                statusText.textContent = 'Budget respecté';
+                statusText.style.color = 'var(--text-secondary)';
             }
-
-            // --- Mise à jour de la Santé du Budget Global ---
-            const globalCard = document.getElementById('globalBudgetCard');
-            let totalBudgetLimit = 0;
-            // On somme toutes les limites de budget définies
-            if (Array.isArray(budgets)) {
-                budgets.forEach(b => totalBudgetLimit += parseFloat(b.monthly_limit));
-            }
-
-            if (totalBudgetLimit > 0) {
-                // Avoir au moins un budget défini affiche la carte globale
-                globalCard.style.display = 'block';
-                const totalExpenses = parseFloat(summary.totalExpenses) || 0;
-                const percentage = Math.min((totalExpenses / totalBudgetLimit) * 100, 100).toFixed(1);
-
-                document.getElementById('globalBudgetSpent').textContent = formatAmount(totalExpenses);
-                document.getElementById('globalBudgetLimit').textContent = formatAmount(totalBudgetLimit);
-                document.getElementById('globalBudgetPct').textContent = `${percentage}%`;
-
-                const bar = document.getElementById('globalBudgetBar');
-                const statusText = document.getElementById('globalBudgetStatusText');
-
-                bar.style.width = `${percentage}%`;
-
-                // Coloration sémantique (vert < 70%, orange < 90%, rouge > 90%)
-                if (percentage >= 100) {
-                    bar.style.backgroundColor = 'var(--color-expense)'; // Rouge
-                    document.getElementById('globalBudgetPct').style.color = 'var(--color-expense)';
-                    statusText.textContent = 'Dépassement !';
-                    statusText.style.color = 'var(--color-expense)';
-                } else if (percentage >= 85) {
-                    bar.style.backgroundColor = '#f59e0b'; // Orange
-                    document.getElementById('globalBudgetPct').style.color = '#f59e0b';
-                    statusText.textContent = 'Attention, budget presque atteint';
-                    statusText.style.color = '#f59e0b';
-                } else {
-                    bar.style.backgroundColor = 'var(--accent)'; // Bleu/Vert normal
-                    document.getElementById('globalBudgetPct').style.color = 'var(--accent)';
-                    statusText.textContent = 'Budget respecté';
-                    statusText.style.color = 'var(--text-secondary)';
-                }
-            } else {
-                // S'il n'y a aucun budget défini, on cache la carte
-                globalCard.style.display = 'none';
-            }
+        } else {
+            globalCard.style.display = 'none';
         }
 
-        // --- Mise à jour de la comparaison avec le mois précédent ---
         const compBar = document.getElementById('comparisonBar');
-        if (prevSummaryRes.ok && (prevSummary.totalIncome > 0 || prevSummary.totalExpenses > 0)) {
+        if (safePrevSummary.totalIncome > 0 || safePrevSummary.totalExpenses > 0) {
             compBar.style.display = 'flex';
 
-            const incDiff = summary.totalIncome - prevSummary.totalIncome;
-            const expDiff = summary.totalExpenses - prevSummary.totalExpenses;
+            const incDiff = safeSummary.totalIncome - safePrevSummary.totalIncome;
+            const expDiff = safeSummary.totalExpenses - safePrevSummary.totalExpenses;
 
             const compIncome = document.getElementById('compIncome');
             const compExpense = document.getElementById('compExpense');
 
-            // Revenus
             if (incDiff > 0) {
                 compIncome.textContent = 'Revenus ▲ ' + formatAmount(incDiff);
                 compIncome.className = 'comp-item positive';
             } else if (incDiff < 0) {
                 compIncome.textContent = 'Revenus ▼ ' + formatAmount(Math.abs(incDiff));
-                compIncome.className = 'comp-item negative'; // Moins de revenus = négatif
+                compIncome.className = 'comp-item negative';
             } else {
                 compIncome.textContent = 'Revenus =';
                 compIncome.className = 'comp-item neutral';
             }
 
-            // Dépenses
             if (expDiff > 0) {
                 compExpense.textContent = 'Dépenses ▲ ' + formatAmount(expDiff);
-                compExpense.className = 'comp-item negative'; // Plus de dépenses = négatif
+                compExpense.className = 'comp-item negative';
             } else if (expDiff < 0) {
                 compExpense.textContent = 'Dépenses ▼ ' + formatAmount(Math.abs(expDiff));
-                compExpense.className = 'comp-item positive'; // Moins de dépenses = positif
+                compExpense.className = 'comp-item positive';
             } else {
                 compExpense.textContent = 'Dépenses =';
                 compExpense.className = 'comp-item neutral';
@@ -839,13 +868,12 @@ async function loadDashboard() {
             compBar.style.display = 'none';
         }
 
-        // --- Mise à jour des récurrences en attente ---
         const pendingSection = document.getElementById('pendingSection');
-        if (pendingRes.ok && pending.length > 0) {
+        if (safePending.length > 0) {
             pendingSection.style.display = 'block';
-            document.getElementById('pendingBadge').textContent = pending.length;
+            document.getElementById('pendingBadge').textContent = safePending.length;
 
-            document.getElementById('pendingList').innerHTML = pending.map(tx => `
+            document.getElementById('pendingList').innerHTML = safePending.map(tx => `
                 <div class="pending-item">
                     <div>
                         <span style="font-weight:600">${tx.category}</span>
@@ -863,16 +891,27 @@ async function loadDashboard() {
             `).join('');
         } else {
             pendingSection.style.display = 'none';
+            document.getElementById('pendingList').innerHTML = '';
         }
 
-        // --- Mise à jour des catégories ---
-        displayCategories(categories, summary.totalExpenses);
+        displayCategories(safeCategories, safeSummary.totalExpenses);
 
-        // --- Mise à jour de l'Objectif d'épargne ---
         await loadGoal();
 
     } catch (err) {
         console.error('Erreur chargement dashboard:', err);
+
+        let message = 'Erreur lors du chargement du tableau de bord.';
+
+        if (String(err.message).includes('401')) {
+            message = 'Session Telegram expirée. Fermez puis rouvrez la Mini App.';
+        } else if (String(err.message).includes('429')) {
+            message = 'Trop de requêtes envoyées. Attendez quelques secondes.';
+        } else if (String(err.message).includes('500')) {
+            message = 'Erreur serveur. Réessayez dans un instant.';
+        }
+
+        alert(message);
     }
 }
 
@@ -964,15 +1003,30 @@ async function loadTransactions() {
             }
         });
 
-        if (!response.ok) throw new Error('Erreur serveur');
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status} - ${errorText}`);
+        }
 
         allTransactions = await response.json();
         displayTransactions(allTransactions);
 
     } catch (err) {
         console.error('Erreur chargement transactions:', err);
+
+        let message = '❌ Erreur de chargement.';
+        if (String(err.message).includes('401')) {
+            message = '🔒 Session Telegram expirée. Fermez puis rouvrez la Mini App.';
+        } else if (String(err.message).includes('429')) {
+            message = '⏳ Trop de requêtes envoyées. Attendez quelques secondes.';
+        } else if (String(err.message).includes('500')) {
+            message = '⚠️ Erreur serveur. Réessayez dans un instant.';
+        } else {
+            message = '❌ Erreur de chargement. Vérifiez votre connexion.';
+        }
+
         document.getElementById('transactionsList').innerHTML =
-            '<p class="empty-message">❌ Erreur de chargement. Vérifiez votre connexion.</p>';
+            `<p class="empty-message">${message}</p>`;
     }
 }
 
