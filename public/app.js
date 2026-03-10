@@ -995,38 +995,70 @@ function displayCategories(categories, totalExpenses) {
 async function loadTransactions() {
     if (!telegramUserId) return;
 
-    try {
-        const response = await fetch(`/api/transactions?month=${currentMonth}&year=${currentYear}`, {
-            headers: {
-                'x-telegram-init-data': telegramInitData,
-                'x-telegram-user-id': telegramUserId
-            }
-        });
+    const container = document.getElementById('transactionsList');
 
+    try {
+        const response = await fetch(
+            `/api/transactions?month=${currentMonth}&year=${currentYear}`,
+            {
+                headers: {
+                    'x-telegram-init-data': telegramInitData,
+                    'x-telegram-user-id': telegramUserId
+                }
+            }
+        );
+
+        // Vérifier la réponse HTTP
         if (!response.ok) {
-            const errorText = await response.text();
+            let errorText = '';
+            try {
+                errorText = await response.text();
+            } catch {
+                errorText = 'Impossible de lire la réponse serveur';
+            }
+
             throw new Error(`HTTP ${response.status} - ${errorText}`);
         }
 
-        allTransactions = await response.json();
+        const data = await response.json();
+
+        // Sécurité : vérifier que c'est bien un tableau
+        if (!Array.isArray(data)) {
+            console.warn('Transactions inattendues:', data);
+            allTransactions = [];
+        } else {
+            allTransactions = data;
+        }
+
+        // Affichage
         displayTransactions(allTransactions);
 
     } catch (err) {
         console.error('Erreur chargement transactions:', err);
 
-        let message = '❌ Erreur de chargement.';
-        if (String(err.message).includes('401')) {
+        let message = '❌ Erreur de chargement des transactions.';
+
+        const msg = String(err.message || '');
+
+        if (msg.includes('401')) {
             message = '🔒 Session Telegram expirée. Fermez puis rouvrez la Mini App.';
-        } else if (String(err.message).includes('429')) {
+        }
+        else if (msg.includes('429')) {
             message = '⏳ Trop de requêtes envoyées. Attendez quelques secondes.';
-        } else if (String(err.message).includes('500')) {
+        }
+        else if (msg.includes('500')) {
             message = '⚠️ Erreur serveur. Réessayez dans un instant.';
-        } else {
+        }
+        else if (msg.includes('Failed to fetch')) {
+            message = '🌐 Impossible de contacter le serveur.';
+        }
+        else {
             message = '❌ Erreur de chargement. Vérifiez votre connexion.';
         }
 
-        document.getElementById('transactionsList').innerHTML =
-            `<p class="empty-message">${message}</p>`;
+        if (container) {
+            container.innerHTML = `<p class="empty-message">${message}</p>`;
+        }
     }
 }
 
