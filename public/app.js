@@ -81,6 +81,7 @@ document.addEventListener('DOMContentLoaded', function () {
     loadDashboard();
     loadTransactions();
     loadFamily();     // Charge le statut famille
+    initSwipeNavigation(); // Navigation gestuelle
 });
 
 // =========================================
@@ -681,6 +682,62 @@ function showTab(tabName) {
     // Recharge les données si on va sur le tableau de bord ou l'historique
     if (tabName === 'dashboard') loadDashboard();
     if (tabName === 'history') loadTransactions();
+}
+
+// =========================================
+// NAVIGATION PAR GLISSEMENT (SWIPE)
+// =========================================
+
+/**
+ * Initialise la détection des gestes de balayage (swipe) pour changer d'onglet
+ */
+function initSwipeNavigation() {
+    let touchStartX = 0;
+    let touchEndX = 0;
+    let touchStartY = 0;
+    let touchEndY = 0;
+
+    const tabs = ['dashboard', 'add', 'history'];
+    const swipeThreshold = 50; // Distance minimale en pixels
+
+    document.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+    }, { passive: true });
+
+    document.addEventListener('touchend', e => {
+        touchEndX = e.changedTouches[0].screenX;
+        touchEndY = e.changedTouches[0].screenY;
+        handleSwipe();
+    }, { passive: true });
+
+    function handleSwipe() {
+        const diffX = touchEndX - touchStartX;
+        const diffY = touchEndY - touchStartY;
+
+        // Empêche le changement si le swipe est plus vertical que horizontal (c.-à-d. si l'utilisateur scroll)
+        // et s'il ne dépasse pas le seuil minimum
+        if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > swipeThreshold) {
+
+            const activeBtn = document.querySelector('.tab-btn.active');
+            if (!activeBtn) return;
+
+            const currentTabId = activeBtn.id.replace('tab-', '');
+            const currentIndex = tabs.indexOf(currentTabId);
+
+            if (diffX > 0) {
+                // Swipe Droite -> Onglet précédent (gauche)
+                if (currentIndex > 0) {
+                    showTab(tabs[currentIndex - 1]);
+                }
+            } else {
+                // Swipe Gauche -> Onglet suivant (droite)
+                if (currentIndex < tabs.length - 1) {
+                    showTab(tabs[currentIndex + 1]);
+                }
+            }
+        }
+    }
 }
 
 // =========================================
