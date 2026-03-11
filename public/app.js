@@ -115,10 +115,27 @@ function initTelegram() {
             console.warn('⚠️ Données utilisateur Telegram non disponibles');
             useFallbackMode();
         }
+
+        // Affiche le bouton "Installer" si l'API addToHomeScreen est disponible
+        if (typeof tg.addToHomeScreen === 'function') {
+            const addBtn = document.getElementById('addHomeBtn');
+            if (addBtn) addBtn.style.display = 'inline-block';
+        }
     } else {
         // L'app est ouverte hors Telegram (navigateur classique = mode développement)
         console.warn('⚠️ Telegram WebApp non détecté - mode développement');
         useFallbackMode();
+    }
+}
+
+/**
+ * Ajoute l'app à l'écran d'accueil via l'API Telegram.
+ */
+function addToHomeScreen() {
+    if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.addToHomeScreen === 'function') {
+        Telegram.WebApp.addToHomeScreen();
+    } else {
+        alert('Cette fonctionnalité nécessite une version récente de Telegram.');
     }
 }
 
