@@ -99,7 +99,7 @@ body {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
     position: sticky;
-    top: 44px;
+    top: 40px;
     z-index: 90;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -143,8 +143,7 @@ body {
     border-bottom: 1px solid var(--border);
     padding: 0.6rem 1rem;
     position: sticky;
-    top: 116px;
-    /* header + tab-nav height */
+    top: 76px;
     z-index: 80;
     user-select: none;
 }
