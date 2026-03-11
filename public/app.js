@@ -80,7 +80,187 @@ document.addEventListener('DOMContentLoaded', function () {
     initChart();      // Initialise le graphique donut
     loadDashboard();
     loadTransactions();
+    loadFamily();     // Charge le statut famille
 });
+
+// =========================================
+// PARTAGE FAMILIAL
+// =========================================
+
+let familyInfo = null;
+
+async function loadFamily() {
+    try {
+        const res = await fetch('/api/family', {
+            headers: {
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            }
+        });
+        if (res.ok) {
+            familyInfo = await res.json();
+            updateFamilyBadge();
+        }
+    } catch (err) {
+        console.error('Erreur loadFamily:', err);
+    }
+}
+
+function updateFamilyBadge() {
+    const badge = document.getElementById('familyBadge');
+    if (!badge) return;
+    if (familyInfo && familyInfo.inFamily) {
+        badge.textContent = '👨‍👩‍👧 ' + familyInfo.memberCount;
+        badge.style.background = 'var(--accent)';
+        badge.style.color = 'white';
+        badge.style.borderColor = 'var(--accent)';
+    } else {
+        badge.textContent = '👨‍👩‍👧';
+        badge.style.background = 'var(--bg-tertiary)';
+        badge.style.color = 'var(--text-primary)';
+        badge.style.borderColor = 'var(--border-color)';
+    }
+}
+
+function openFamilyModal() {
+    document.getElementById('familyModal').style.display = 'flex';
+    renderFamilyModalContent();
+}
+
+function closeFamilyModal() {
+    document.getElementById('familyModal').style.display = 'none';
+}
+
+function renderFamilyModalContent() {
+    const body = document.getElementById('familyModalBody');
+    if (!body) return;
+
+    if (familyInfo && familyInfo.inFamily) {
+        // Déjà dans une famille
+        body.innerHTML = `
+            <div style="text-align:center; padding:1rem 0;">
+                <div style="font-size:2rem; margin-bottom:0.5rem;">✅</div>
+                <p style="font-weight:600; margin-bottom:0.25rem;">Famille active</p>
+                <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:1rem;">
+                    ${familyInfo.memberCount} membre${familyInfo.memberCount > 1 ? 's' : ''} connecté${familyInfo.memberCount > 1 ? 's' : ''}
+                </p>
+                <div style="background:var(--bg-tertiary); border-radius:8px; padding:0.75rem; margin-bottom:1rem;">
+                    <p style="font-size:0.7rem; color:var(--text-secondary); margin-bottom:0.25rem;">Code d'invitation</p>
+                    <p style="font-size:1.5rem; font-weight:700; letter-spacing:0.2em; font-family:monospace;">${familyInfo.inviteCode}</p>
+                    <p style="font-size:0.7rem; color:var(--text-secondary); margin-top:0.25rem;">Partagez ce code pour inviter un membre</p>
+                </div>
+                <button onclick="leaveFamily()" style="background:transparent; color:#dc2626; border:1px solid #dc2626; padding:0.5rem 1rem; border-radius:8px; cursor:pointer; font-family:inherit; font-size:0.8rem;">
+                    ${familyInfo.isOwner ? '🗑️ Supprimer la famille' : '🚪 Quitter la famille'}
+                </button>
+            </div>
+        `;
+    } else {
+        // Pas dans une famille
+        body.innerHTML = `
+            <div style="text-align:center; padding:0.5rem 0;">
+                <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1.25rem;">
+                    Partagez vos données avec votre conjoint(e). Créez une famille ou rejoignez-en une avec un code.
+                </p>
+                <button onclick="createFamily()" style="width:100%; background:var(--accent); color:white; border:none; padding:0.75rem; border-radius:8px; cursor:pointer; font-family:inherit; font-weight:600; font-size:0.9rem; margin-bottom:1rem;">
+                    ➕ Créer une famille
+                </button>
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+                    <hr style="flex:1; border:none; border-top:1px solid var(--border-color);">
+                    <span style="font-size:0.75rem; color:var(--text-secondary);">OU</span>
+                    <hr style="flex:1; border:none; border-top:1px solid var(--border-color);">
+                </div>
+                <div style="display:flex; gap:0.5rem;">
+                    <input type="text" id="familyCodeInput" maxlength="6" placeholder="CODE" style="flex:1; padding:0.65rem; border:1px solid var(--border-color); border-radius:8px; font-family:monospace; font-size:1rem; text-align:center; text-transform:uppercase; background:var(--bg-tertiary); color:var(--text-primary);">
+                    <button onclick="joinFamily()" style="background:var(--bg-tertiary); color:var(--accent); border:1px solid var(--accent); padding:0.65rem 1rem; border-radius:8px; cursor:pointer; font-family:inherit; font-weight:600; font-size:0.85rem;">
+                        Rejoindre
+                    </button>
+                </div>
+                <p id="familyJoinError" style="color:#dc2626; font-size:0.8rem; margin-top:0.5rem; display:none;"></p>
+            </div>
+        `;
+    }
+}
+
+async function createFamily() {
+    try {
+        const res = await fetch('/api/family', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            }
+        });
+        const data = await res.json();
+        if (res.ok) {
+            await loadFamily();
+            renderFamilyModalContent();
+        } else {
+            alert(data.error || 'Erreur');
+        }
+    } catch (err) {
+        alert('Erreur de connexion.');
+    }
+}
+
+async function joinFamily() {
+    const codeInput = document.getElementById('familyCodeInput');
+    const errorEl = document.getElementById('familyJoinError');
+    const code = (codeInput?.value || '').trim().toUpperCase();
+
+    if (code.length !== 6) {
+        if (errorEl) { errorEl.textContent = 'Le code doit faire 6 caractères.'; errorEl.style.display = 'block'; }
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/family/join', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            },
+            body: JSON.stringify({ code })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            await loadFamily();
+            renderFamilyModalContent();
+            loadDashboard();
+            loadTransactions();
+        } else {
+            if (errorEl) { errorEl.textContent = data.error || 'Erreur'; errorEl.style.display = 'block'; }
+        }
+    } catch (err) {
+        if (errorEl) { errorEl.textContent = 'Erreur de connexion.'; errorEl.style.display = 'block'; }
+    }
+}
+
+async function leaveFamily() {
+    const msg = familyInfo?.isOwner
+        ? 'Supprimer la famille ? Tous les membres seront déconnectés.'
+        : 'Quitter la famille ? Vous ne verrez plus les données partagées.';
+    if (!confirm(msg)) return;
+
+    try {
+        const res = await fetch('/api/family/leave', {
+            method: 'DELETE',
+            headers: {
+                'x-telegram-init-data': telegramInitData,
+                'x-telegram-user-id': telegramUserId
+            }
+        });
+        if (res.ok) {
+            await loadFamily();
+            renderFamilyModalContent();
+            loadDashboard();
+            loadTransactions();
+        }
+    } catch (err) {
+        alert('Erreur de connexion.');
+    }
+}
 
 // =========================================
 // INTÉGRATION TELEGRAM

@@ -38,6 +38,10 @@
                 style="display:none; background:var(--accent); color:white; border:none; padding:0.35rem 0.65rem; border-radius:8px; font-size:0.7rem; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap;">
                 📲 Installer
             </button>
+            <button id="familyBadge" onclick="openFamilyModal()"
+                style="background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border-color); padding:0.35rem 0.65rem; border-radius:8px; font-size:0.7rem; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap;">
+                👨‍👩‍👧
+            </button>
         </div>
     </header>
 
@@ -659,6 +663,21 @@
             <button class="btn btn-primary" onclick="submitPharmacieGain()" id="pharmacieSubmitBtn" style="flex:2">
                 💊 Enregistrer
             </button>
+        </div>
+    </div>
+
+    <!-- ===========================
+         MODAL FAMILLE
+    =========================== -->
+    <div class="modal-overlay" id="familyModal" style="display:none">
+        <div class="modal-content" style="max-width:360px">
+            <div class="modal-header">
+                <h3>👨‍👩‍👧 Partage Familial</h3>
+                <button class="modal-close" onclick="closeFamilyModal()">×</button>
+            </div>
+            <div class="modal-body" id="familyModalBody">
+                <!-- Contenu dynamique via JS -->
+            </div>
         </div>
     </div>
 

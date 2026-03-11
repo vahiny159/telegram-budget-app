@@ -169,7 +169,15 @@ function telegramAuthMiddleware(req, res, next) {
     if (!process.env.BOT_TOKEN) {
         // Utilise l'ID du header en fallback (mode dev uniquement)
         req.telegramUserId = req.headers['x-telegram-user-id'] || 'dev-user';
-        return next();
+        // Résout l'owner_id famille (async)
+        resolveOwnerId(req.telegramUserId).then(ownerId => {
+            req.ownerId = ownerId;
+            next();
+        }).catch(() => {
+            req.ownerId = req.telegramUserId;
+            next();
+        });
+        return;
     }
 
     const { valid, user } = validateTelegramInitData(initData);
@@ -189,7 +197,14 @@ function telegramAuthMiddleware(req, res, next) {
         req.telegramUserId = req.headers['x-telegram-user-id'];
     }
 
-    next();
+    // Résout l'owner_id famille
+    resolveOwnerId(req.telegramUserId).then(ownerId => {
+        req.ownerId = ownerId;
+        next();
+    }).catch(() => {
+        req.ownerId = req.telegramUserId;
+        next();
+    });
 }
 
 // Applique le middleware d'auth à toutes les routes API
@@ -244,15 +259,60 @@ async function initDatabase() {
             );
         `);
 
-        console.log('✅ Tables prêtes (transactions, budgets, goals)');
+        // Table des familles (partage de données entre utilisateurs)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS families (
+                id SERIAL PRIMARY KEY,
+                owner_id TEXT NOT NULL,
+                invite_code VARCHAR(6) UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS family_members (
+                id SERIAL PRIMARY KEY,
+                family_id INTEGER REFERENCES families(id) ON DELETE CASCADE,
+                telegram_user_id TEXT NOT NULL UNIQUE,
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        console.log('✅ Tables prêtes (transactions, budgets, goals, families)');
     } catch (err) {
         console.error('❌ Erreur initialisation base de données:', err.message);
     }
 }
 
 // =========================================
+// PARTAGE FAMILIAL — Résolution de l'owner_id
+// =========================================
+
+/**
+ * Résout l'ID propriétaire partagé pour un utilisateur.
+ * Si l'utilisateur fait partie d'une famille → retourne le owner_id de la famille.
+ * Sinon → retourne son propre telegram_user_id.
+ */
+async function resolveOwnerId(telegramUserId) {
+    try {
+        const result = await pool.query(
+            `SELECT f.owner_id FROM family_members fm
+             JOIN families f ON f.id = fm.family_id
+             WHERE fm.telegram_user_id = $1`,
+            [telegramUserId]
+        );
+        if (result.rows.length > 0) {
+            return result.rows[0].owner_id;
+        }
+    } catch (err) {
+        console.error('Erreur resolveOwnerId:', err.message);
+    }
+    return telegramUserId; // Fallback = son propre ID
+}
+
+// =========================================
 // ROUTES API
-// (req.telegramUserId est dispo grâce au middleware)
+// (req.ownerId est dispo grâce au middleware)
 // =========================================
 
 // GET /api/transactions — Transactions de l'utilisateur (filtrables par mois/année)
@@ -270,11 +330,11 @@ app.get('/api/transactions', async (req, res) => {
                        AND EXTRACT(MONTH FROM date) = $2
                        AND EXTRACT(YEAR  FROM date) = $3
                      ORDER BY date DESC, created_at DESC`;
-            params = [req.telegramUserId, parseInt(month), parseInt(year)];
+            params = [req.ownerId, parseInt(month), parseInt(year)];
         } else {
             // Retourne toutes les transactions
             query = 'SELECT * FROM transactions WHERE telegram_user_id = $1 ORDER BY date DESC, created_at DESC';
-            params = [req.telegramUserId];
+            params = [req.ownerId];
         }
 
         const result = await pool.query(query, params);
@@ -313,7 +373,7 @@ app.post('/api/transactions', async (req, res) => {
             `INSERT INTO transactions (telegram_user_id, type, amount, category, description, date)
              VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING *`,
-            [req.telegramUserId, type, parseFloat(amount), category, description || '', date]
+            [req.ownerId, type, parseFloat(amount), category, description || '', date]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {
@@ -334,7 +394,7 @@ app.delete('/api/transactions/:id', async (req, res) => {
         // Récupère la transaction avant suppression pour vérifier la catégorie
         const txRes = await pool.query(
             'SELECT * FROM transactions WHERE id = $1 AND telegram_user_id = $2',
-            [id, req.telegramUserId]
+            [id, req.ownerId]
         );
         if (txRes.rows.length === 0) {
             return res.status(404).json({ error: 'Transaction non trouvée ou non autorisée' });
@@ -344,7 +404,7 @@ app.delete('/api/transactions/:id', async (req, res) => {
         // Supprime la transaction
         await pool.query(
             'DELETE FROM transactions WHERE id = $1 AND telegram_user_id = $2',
-            [id, req.telegramUserId]
+            [id, req.ownerId]
         );
 
         // Si c'était un dépôt dans la tirelire → on décrémente le goal
@@ -354,7 +414,7 @@ app.delete('/api/transactions/:id', async (req, res) => {
                  SET current_amount = GREATEST(0, current_amount - $1)
                  WHERE telegram_user_id = $2
                  ORDER BY id DESC LIMIT 1`,
-                [parseFloat(tx.amount), req.telegramUserId]
+                [parseFloat(tx.amount), req.ownerId]
             ).catch(() => { }); // Silencieux si pas de goal
         }
 
@@ -395,7 +455,7 @@ app.put('/api/transactions/:id', async (req, res) => {
              SET type=$2, amount=$3, category=$4, description=$5, date=$6
              WHERE id=$1 AND telegram_user_id=$7
              RETURNING *`,
-            [id, type, parseFloat(amount), category, description || '', date, req.telegramUserId]
+            [id, type, parseFloat(amount), category, description || '', date, req.ownerId]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Transaction non trouvée ou non autorisée' });
@@ -423,14 +483,14 @@ app.get('/api/summary', async (req, res) => {
              WHERE telegram_user_id = $1
                AND EXTRACT(MONTH FROM date) = $2
                AND EXTRACT(YEAR  FROM date) = $3`;
-            params = [req.telegramUserId, parseInt(month), parseInt(year)];
+            params = [req.ownerId, parseInt(month), parseInt(year)];
         } else {
             query = `SELECT
                 COALESCE(SUM(CASE WHEN type = 'income'  THEN amount ELSE 0 END), 0) AS "totalIncome",
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS "totalExpenses"
              FROM transactions
              WHERE telegram_user_id = $1`;
-            params = [req.telegramUserId];
+            params = [req.ownerId];
         }
 
         const result = await pool.query(query, params);
@@ -460,13 +520,13 @@ app.get('/api/categories-summary', async (req, res) => {
                        AND EXTRACT(MONTH FROM date) = $2
                        AND EXTRACT(YEAR  FROM date) = $3
                      GROUP BY category ORDER BY total DESC`;
-            params = [req.telegramUserId, parseInt(month), parseInt(year)];
+            params = [req.ownerId, parseInt(month), parseInt(year)];
         } else {
             query = `SELECT category, SUM(amount) AS total
                      FROM transactions
                      WHERE telegram_user_id = $1 AND type = 'expense'
                      GROUP BY category ORDER BY total DESC`;
-            params = [req.telegramUserId];
+            params = [req.ownerId];
         }
 
         const result = await pool.query(query, params);
@@ -491,7 +551,7 @@ app.get('/api/budgets', async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT category, monthly_limit FROM budgets WHERE telegram_user_id = $1 ORDER BY category',
-            [req.telegramUserId]
+            [req.ownerId]
         );
         res.json(result.rows);
     } catch (err) {
@@ -513,7 +573,7 @@ app.post('/api/budgets', async (req, res) => {
              ON CONFLICT (telegram_user_id, category)
              DO UPDATE SET monthly_limit = EXCLUDED.monthly_limit
              RETURNING *`,
-            [req.telegramUserId, category, parseFloat(monthly_limit)]
+            [req.ownerId, category, parseFloat(monthly_limit)]
         );
         res.json(result.rows[0]);
     } catch (err) {
@@ -528,7 +588,7 @@ app.delete('/api/budgets/:category', async (req, res) => {
     try {
         await pool.query(
             'DELETE FROM budgets WHERE telegram_user_id = $1 AND category = $2',
-            [req.telegramUserId, decodeURIComponent(category)]
+            [req.ownerId, decodeURIComponent(category)]
         );
         res.json({ message: 'Budget supprimé' });
     } catch (err) {
@@ -560,7 +620,7 @@ app.get('/api/pending-recurring', async (req, res) => {
               AND is_recurring = TRUE
               AND EXTRACT(MONTH FROM date) = $2
               AND EXTRACT(YEAR  FROM date) = $3
-        `, [req.telegramUserId, prevMonth, prevYear]);
+        `, [req.ownerId, prevMonth, prevYear]);
 
         if (prev.rows.length === 0) return res.json([]);
 
@@ -575,7 +635,7 @@ app.get('/api/pending-recurring', async (req, res) => {
                   AND EXTRACT(MONTH FROM date) = $4
                   AND EXTRACT(YEAR  FROM date) = $5
                 LIMIT 1
-            `, [req.telegramUserId, tx.category, tx.type, month, year]);
+            `, [req.ownerId, tx.category, tx.type, month, year]);
             if (exists.rows.length === 0) pending.push(tx);
         }
         res.json(pending);
@@ -595,7 +655,7 @@ app.post('/api/apply-recurring', async (req, res) => {
         // Récupère la transaction originale
         const orig = await pool.query(
             'SELECT * FROM transactions WHERE id = $1 AND telegram_user_id = $2',
-            [transaction_id, req.telegramUserId]
+            [transaction_id, req.ownerId]
         );
         if (orig.rows.length === 0) return res.status(404).json({ error: 'Non trouvé' });
         const tx = orig.rows[0];
@@ -609,7 +669,7 @@ app.post('/api/apply-recurring', async (req, res) => {
         const result = await pool.query(
             `INSERT INTO transactions (telegram_user_id, type, amount, category, description, date, is_recurring)
              VALUES ($1, $2, $3, $4, $5, $6, TRUE) RETURNING *`,
-            [req.telegramUserId, tx.type, tx.amount, tx.category, tx.description, newDate]
+            [req.ownerId, tx.type, tx.amount, tx.category, tx.description, newDate]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {
@@ -638,7 +698,7 @@ app.delete('/api/transactions/bulk', telegramAuthMiddleware, async (req, res) =>
              WHERE id = ANY($1::int[])
                AND telegram_user_id = $2
              RETURNING *`,
-            [safeIds, req.telegramUserId]
+            [safeIds, req.ownerId]
         );
 
         // Si certaines transactions supprimées étaient des dépôts tirelire,
@@ -653,7 +713,7 @@ app.delete('/api/transactions/bulk', telegramAuthMiddleware, async (req, res) =>
                  SET current_amount = GREATEST(0, current_amount - $1)
                  WHERE telegram_user_id = $2
                  ORDER BY id DESC LIMIT 1`,
-                [savingsTotal, req.telegramUserId]
+                [savingsTotal, req.ownerId]
             ).catch(() => { });
         }
 
@@ -674,7 +734,7 @@ app.get('/api/goals', telegramAuthMiddleware, async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT * FROM goals WHERE telegram_user_id = $1 ORDER BY created_at DESC',
-            [req.telegramUserId]
+            [req.ownerId]
         );
         res.json(result.rows);
     } catch (err) {
@@ -693,7 +753,7 @@ app.post('/api/goals', telegramAuthMiddleware, async (req, res) => {
     try {
         const result = await pool.query(
             'INSERT INTO goals (telegram_user_id, name, target_amount, current_amount) VALUES ($1, $2, $3, 0) RETURNING *',
-            [req.telegramUserId, name.trim(), parseFloat(target_amount)]
+            [req.ownerId, name.trim(), parseFloat(target_amount)]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {
@@ -718,7 +778,7 @@ app.put('/api/goals/:id/add', telegramAuthMiddleware, async (req, res) => {
         // 1. Mettre à jour l'objectif
         const goalRes = await pool.query(
             'UPDATE goals SET current_amount = current_amount + $1 WHERE id = $2 AND telegram_user_id = $3 RETURNING *',
-            [parseFloat(amount), id, req.telegramUserId]
+            [parseFloat(amount), id, req.ownerId]
         );
 
         if (goalRes.rows.length === 0) {
@@ -733,7 +793,7 @@ app.put('/api/goals/:id/add', telegramAuthMiddleware, async (req, res) => {
         await pool.query(
             `INSERT INTO transactions (telegram_user_id, type, amount, category, description, date, is_recurring)
      VALUES ($1, 'expense', $2, 'Épargne Objectif', $3, $4, FALSE)`,
-            [req.telegramUserId, parseFloat(amount), `Dépôt: ${goal.name}`, date]
+            [req.ownerId, parseFloat(amount), `Dépôt: ${goal.name}`, date]
         );
 
         await pool.query('COMMIT');
@@ -750,11 +810,155 @@ app.delete('/api/goals/:id', telegramAuthMiddleware, async (req, res) => {
     try {
         await pool.query(
             'DELETE FROM goals WHERE id = $1 AND telegram_user_id = $2',
-            [req.params.id, req.telegramUserId]
+            [req.params.id, req.ownerId]
         );
         res.json({ message: 'Objectif supprimé' });
     } catch (err) {
         console.error('Erreur DELETE /api/goals/:id:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// =========================================
+// PARTAGE FAMILIAL — ROUTES API
+// =========================================
+
+function generateInviteCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+// GET /api/family — Infos famille
+app.get('/api/family', async (req, res) => {
+    try {
+        const memberRes = await pool.query(
+            `SELECT fm.family_id, f.owner_id, f.invite_code
+             FROM family_members fm JOIN families f ON f.id = fm.family_id
+             WHERE fm.telegram_user_id = $1`,
+            [req.telegramUserId]
+        );
+        if (memberRes.rows.length === 0) return res.json({ inFamily: false });
+
+        const family = memberRes.rows[0];
+        const countRes = await pool.query(
+            'SELECT COUNT(*) AS count FROM family_members WHERE family_id = $1',
+            [family.family_id]
+        );
+        res.json({
+            inFamily: true,
+            familyId: family.family_id,
+            inviteCode: family.invite_code,
+            isOwner: family.owner_id === req.telegramUserId,
+            memberCount: parseInt(countRes.rows[0].count)
+        });
+    } catch (err) {
+        console.error('Erreur GET /api/family:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// POST /api/family — Créer famille
+app.post('/api/family', async (req, res) => {
+    try {
+        const existing = await pool.query(
+            'SELECT id FROM family_members WHERE telegram_user_id = $1',
+            [req.telegramUserId]
+        );
+        if (existing.rows.length > 0) {
+            return res.status(400).json({ error: 'Déjà dans une famille.' });
+        }
+
+        let code;
+        for (let i = 0; i < 10; i++) {
+            code = generateInviteCode();
+            const dup = await pool.query('SELECT id FROM families WHERE invite_code = $1', [code]);
+            if (dup.rows.length === 0) break;
+        }
+
+        const familyRes = await pool.query(
+            'INSERT INTO families (owner_id, invite_code) VALUES ($1, $2) RETURNING *',
+            [req.telegramUserId, code]
+        );
+        await pool.query(
+            'INSERT INTO family_members (family_id, telegram_user_id) VALUES ($1, $2)',
+            [familyRes.rows[0].id, req.telegramUserId]
+        );
+
+        res.status(201).json({ message: 'Famille créée !', inviteCode: code });
+    } catch (err) {
+        console.error('Erreur POST /api/family:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// POST /api/family/join — Rejoindre par code
+app.post('/api/family/join', async (req, res) => {
+    const { code } = req.body;
+    if (!code || code.length !== 6) {
+        return res.status(400).json({ error: 'Code invalide (6 caractères)' });
+    }
+    try {
+        const existing = await pool.query(
+            'SELECT id FROM family_members WHERE telegram_user_id = $1',
+            [req.telegramUserId]
+        );
+        if (existing.rows.length > 0) {
+            return res.status(400).json({ error: 'Déjà dans une famille.' });
+        }
+
+        const familyRes = await pool.query(
+            'SELECT * FROM families WHERE invite_code = $1', [code.toUpperCase()]
+        );
+        if (familyRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Code invalide.' });
+        }
+
+        const family = familyRes.rows[0];
+        await pool.query(
+            'INSERT INTO family_members (family_id, telegram_user_id) VALUES ($1, $2)',
+            [family.id, req.telegramUserId]
+        );
+
+        // Migrer les données existantes vers le owner
+        const ownerId = family.owner_id;
+        await pool.query('UPDATE transactions SET telegram_user_id = $1 WHERE telegram_user_id = $2', [ownerId, req.telegramUserId]);
+        await pool.query('UPDATE budgets SET telegram_user_id = $1 WHERE telegram_user_id = $2', [ownerId, req.telegramUserId]);
+        await pool.query('UPDATE goals SET telegram_user_id = $1 WHERE telegram_user_id = $2', [ownerId, req.telegramUserId]);
+
+        res.json({ message: 'Famille rejointe ! Données fusionnées.' });
+    } catch (err) {
+        console.error('Erreur POST /api/family/join:', err.message);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// DELETE /api/family/leave — Quitter la famille
+app.delete('/api/family/leave', async (req, res) => {
+    try {
+        const memberRes = await pool.query(
+            `SELECT fm.family_id, f.owner_id FROM family_members fm
+             JOIN families f ON f.id = fm.family_id
+             WHERE fm.telegram_user_id = $1`,
+            [req.telegramUserId]
+        );
+        if (memberRes.rows.length === 0) {
+            return res.status(400).json({ error: 'Pas dans une famille.' });
+        }
+
+        const { family_id, owner_id } = memberRes.rows[0];
+        if (owner_id === req.telegramUserId) {
+            await pool.query('DELETE FROM families WHERE id = $1', [family_id]);
+            return res.json({ message: 'Famille supprimée.' });
+        }
+
+        await pool.query('DELETE FROM family_members WHERE telegram_user_id = $1', [req.telegramUserId]);
+        res.json({ message: 'Famille quittée.' });
+    } catch (err) {
+        console.error('Erreur DELETE /api/family/leave:', err.message);
         res.status(500).json({ error: 'Erreur serveur' });
     }
 });
