@@ -213,10 +213,10 @@ async function createFamily() {
             await loadFamily();
             renderFamilyModalContent();
         } else {
-            alert(data.error || 'Erreur');
+            showNotification(data.error || 'Erreur', 'error');
         }
     } catch (err) {
-        alert('Erreur de connexion.');
+        showNotification('Erreur de connexion.', 'error');
     }
 }
 
@@ -275,7 +275,7 @@ async function leaveFamily() {
             loadTransactions();
         }
     } catch (err) {
-        alert('Erreur de connexion.');
+        showNotification('Erreur de connexion.', 'error');
     }
 }
 
@@ -332,7 +332,7 @@ function addToHomeScreen() {
     if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.addToHomeScreen === 'function') {
         Telegram.WebApp.addToHomeScreen();
     } else {
-        alert('Cette fonctionnalité nécessite une version récente de Telegram.');
+        showNotification('Cette fonctionnalité nécessite une version récente de Telegram.', 'info');
     }
 }
 
@@ -682,6 +682,45 @@ function showTab(tabName) {
     // Recharge les données si on va sur le tableau de bord ou l'historique
     if (tabName === 'dashboard') loadDashboard();
     if (tabName === 'history') loadTransactions();
+}
+
+// =========================================
+// NOTIFICATIONS (TOASTS)
+// =========================================
+
+/**
+ * Affiche une notification non bloquante (toast)
+ * @param {string} message - Le message à afficher
+ * @param {string} type - 'success', 'error', ou 'info'
+ */
+function showNotification(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+
+    let icon = 'ℹ️';
+    if (type === 'success') icon = '✅';
+    if (type === 'error') icon = '❌';
+
+    toast.innerHTML = `
+        <span class="toast-icon">${icon}</span>
+        <span>${message}</span>
+    `;
+
+    container.appendChild(toast);
+
+    // Supprime le toast après 15 secondes
+    setTimeout(() => {
+        toast.classList.add('toast-fadeOut');
+        // Attend la fin de l'animation CSS (0.3s)
+        setTimeout(() => {
+            if (toast.parentNode === container) {
+                container.removeChild(toast);
+            }
+        }, 300);
+    }, 15000);
 }
 
 // =========================================
