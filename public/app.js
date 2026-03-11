@@ -611,13 +611,11 @@ async function submitEdit() {
 
     // Validation client
     if (!amount || parseFloat(amount) <= 0) {
-        msgEl.textContent = '❌ Montant invalide.';
-        msgEl.className = 'form-message error';
+        showNotification('Montant invalide.', 'error');
         return;
     }
     if (!category) {
-        msgEl.textContent = '❌ Veuillez choisir une catégorie.';
-        msgEl.className = 'form-message error';
+        showNotification('Veuillez choisir une catégorie.', 'error');
         return;
     }
 
@@ -645,14 +643,12 @@ async function submitEdit() {
             // Recharge les données
             await Promise.all([loadTransactions(), loadDashboard()]);
         } else {
-            const data = await response.json();
-            msgEl.textContent = '❌ ' + (data.error || 'Erreur serveur.');
-            msgEl.className = 'form-message error';
+            const errData = await response.json();
+            showNotification(errData.error || 'Erreur lors de la modification.', 'error');
         }
     } catch (err) {
         console.error('Erreur PUT:', err);
-        msgEl.textContent = '❌ Erreur de connexion.';
-        msgEl.className = 'form-message error';
+        showNotification('Erreur de connexion.', 'error');
     }
 
     btn.disabled = false;
@@ -993,14 +989,9 @@ async function submitTransaction(event) {
  * @param {string} message - Le texte à afficher
  */
 function showMessage(type, message) {
-    const msgEl = document.getElementById('formMessage');
-    msgEl.textContent = message;
-    msgEl.className = 'form-message ' + type;
-
-    // Fait disparaître le message après 4 secondes
-    setTimeout(() => {
-        msgEl.className = 'form-message hidden';
-    }, 4000);
+    // Nettoyage manuel des emojis (le toast les ajoute déjà)
+    const cleanMsg = message.replace(/^[✅❌ℹ️]\s*/, '');
+    showNotification(cleanMsg, type);
 }
 
 // =========================================
@@ -1708,10 +1699,10 @@ async function bulkDeleteTransactions() {
             loadDashboard();
         } else {
             const err = await response.json();
-            alert('❌ ' + (err.error || 'Erreur lors de la suppression.'));
+            showNotification(err.error || 'Erreur lors de la suppression.', 'error');
         }
     } catch {
-        alert('❌ Erreur de connexion.');
+        showNotification('Erreur de connexion.', 'error');
     }
 }
 
@@ -1759,11 +1750,11 @@ async function deleteTransaction(id) {
                 }, 300);
             }
         } else {
-            alert('❌ Impossible de supprimer cette transaction.');
+            showNotification('Impossible de supprimer cette transaction.', 'error');
         }
     } catch (err) {
         console.error('Erreur suppression:', err);
-        alert('❌ Erreur de connexion.');
+        showNotification('Erreur de connexion.', 'error');
     }
 }
 
@@ -1921,7 +1912,6 @@ function openPharmacieModal() {
     const dateInput = document.getElementById('pharmacieDate');
     dateInput.value = new Date().toISOString().split('T')[0];
     document.getElementById('pharmacieAmount').value = '';
-    document.getElementById('pharmacieMessage').className = 'form-message hidden';
     document.getElementById('pharmacieBackdrop').classList.add('active');
     document.getElementById('pharmacieModal').classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -1940,13 +1930,11 @@ async function submitPharmacieGain() {
     const btn = document.getElementById('pharmacieSubmitBtn');
 
     if (!amount || parseFloat(amount) <= 0) {
-        msgEl.textContent = 'Veuillez entrer un montant valide.';
-        msgEl.className = 'form-message error';
+        showNotification('Veuillez entrer un montant valide.', 'error');
         return;
     }
     if (!date) {
-        msgEl.textContent = 'Veuillez choisir une date.';
-        msgEl.className = 'form-message error';
+        showNotification('Veuillez choisir une date.', 'error');
         return;
     }
 
@@ -1980,12 +1968,10 @@ async function submitPharmacieGain() {
             loadTransactions();
         } else {
             const data = await response.json();
-            msgEl.textContent = '❌ ' + (data.error || 'Erreur serveur.');
-            msgEl.className = 'form-message error';
+            showNotification(data.error || 'Erreur serveur.', 'error');
         }
     } catch (err) {
-        msgEl.textContent = '❌ Erreur de connexion.';
-        msgEl.className = 'form-message error';
+        showNotification('Erreur de connexion.', 'error');
     }
 
     btn.disabled = false;
@@ -2069,7 +2055,6 @@ function openCreateGoalModal() {
     document.getElementById('goalCreateModal').classList.add('active');
     document.getElementById('newGoalName').value = '';
     document.getElementById('newGoalTarget').value = '';
-    document.getElementById('goalCreateMessage').className = 'form-message hidden';
 }
 
 function closeCreateGoalModal() {
@@ -2084,8 +2069,7 @@ async function submitCreateGoal() {
     const btn = document.getElementById('goalCreateSubmitBtn');
 
     if (!name || !target || parseFloat(target) <= 0) {
-        msgEl.textContent = 'Veuillez remplir correctement les champs.';
-        msgEl.className = 'form-message error';
+        showNotification('Veuillez remplir correctement les champs.', 'error');
         return;
     }
 
@@ -2106,13 +2090,12 @@ async function submitCreateGoal() {
         if (response.ok) {
             closeCreateGoalModal();
             loadDashboard(); // Recharge le dashboard
+            showNotification('Objectif créé avec succès !', 'success');
         } else {
-            msgEl.textContent = 'Erreur lors de la création.';
-            msgEl.className = 'form-message error';
+            showNotification('Erreur lors de la création.', 'error');
         }
     } catch (err) {
-        msgEl.textContent = 'Erreur de connexion.';
-        msgEl.className = 'form-message error';
+        showNotification('Erreur de connexion.', 'error');
     }
     btn.disabled = false;
     btn.textContent = 'Créer';
@@ -2122,7 +2105,6 @@ function openAddFundsModal() {
     document.getElementById('goalAddFundsBackdrop').classList.add('active');
     document.getElementById('goalAddFundsModal').classList.add('active');
     document.getElementById('addFundsAmount').value = '';
-    document.getElementById('goalAddFundsMessage').className = 'form-message hidden';
 }
 
 function closeAddFundsModal() {
@@ -2137,8 +2119,7 @@ async function submitAddFunds() {
     const btn = document.getElementById('goalAddFundsSubmitBtn');
 
     if (!amount || parseFloat(amount) <= 0) {
-        msgEl.textContent = 'Veuillez entrer un montant valide.';
-        msgEl.className = 'form-message error';
+        showNotification('Veuillez entrer un montant valide.', 'error');
         return;
     }
 
@@ -2159,13 +2140,12 @@ async function submitAddFunds() {
         if (response.ok) {
             closeAddFundsModal();
             loadDashboard(); // Recharge tout pour déduire du solde
+            showNotification('Fonds ajoutés avec succès !', 'success');
         } else {
-            msgEl.textContent = 'Erreur lors de l\'ajout.';
-            msgEl.className = 'form-message error';
+            showNotification('Erreur lors de l\'ajout.', 'error');
         }
     } catch (err) {
-        msgEl.textContent = 'Erreur de connexion.';
-        msgEl.className = 'form-message error';
+        showNotification('Erreur de connexion.', 'error');
     }
     btn.disabled = false;
     btn.textContent = 'Valider';
