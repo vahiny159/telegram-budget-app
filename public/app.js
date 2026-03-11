@@ -107,18 +107,34 @@ async function loadFamily() {
 }
 
 function updateFamilyBadge() {
-    const badge = document.getElementById('familyBadge');
+    const badge = document.getElementById('familyBadgeText');
     if (!badge) return;
     if (familyInfo && familyInfo.inFamily) {
-        badge.textContent = '👨‍👩‍👧 ' + familyInfo.memberCount;
-        badge.style.background = 'var(--accent)';
-        badge.style.color = 'white';
-        badge.style.borderColor = 'var(--accent)';
+        badge.textContent = `Famille (${familyInfo.memberCount} membres)`;
     } else {
-        badge.textContent = '👨‍👩‍👧';
-        badge.style.background = 'var(--bg-tertiary)';
-        badge.style.color = 'var(--text-primary)';
-        badge.style.borderColor = 'var(--border-color)';
+        badge.textContent = 'Partage familial';
+    }
+}
+
+function toggleSettingsMenu() {
+    const dd = document.getElementById('settingsDropdown');
+    if (!dd) return;
+    const isOpen = dd.style.display !== 'none';
+    dd.style.display = isOpen ? 'none' : 'block';
+
+    // Ferme le menu si on clique ailleurs
+    if (!isOpen) {
+        setTimeout(() => {
+            document.addEventListener('click', closeSettingsOnClickOutside, { once: true });
+        }, 10);
+    }
+}
+
+function closeSettingsOnClickOutside(e) {
+    const dd = document.getElementById('settingsDropdown');
+    const btn = document.getElementById('settingsBtn');
+    if (dd && !dd.contains(e.target) && !btn.contains(e.target)) {
+        dd.style.display = 'none';
     }
 }
 

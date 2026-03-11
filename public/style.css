@@ -67,7 +67,7 @@ body {
 .app-header {
     background: linear-gradient(135deg, #ffffff 0%, #fff1f2 100%);
     border-bottom: 1px solid var(--border);
-    padding: 1rem;
+    padding: 0.5rem 0.75rem;
     position: sticky;
     top: 0;
     z-index: 100;
@@ -76,25 +76,19 @@ body {
 .header-content {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.5rem;
     max-width: 600px;
     margin: 0 auto;
 }
 
 .header-icon {
-    font-size: 2rem;
-}
-
-.header-title {
     font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--text-primary);
 }
 
 .header-subtitle {
     font-size: 0.8rem;
     color: var(--text-secondary);
-    margin-top: 0.1rem;
+    font-weight: 500;
 }
 
 /* =========================================
@@ -105,18 +99,16 @@ body {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
     position: sticky;
-    top: 68px;
-    /* hauteur du header */
+    top: 44px;
     z-index: 90;
     overflow-x: auto;
-    /* scroll horizontal si petit écran */
     -webkit-overflow-scrolling: touch;
 }
 
 .tab-btn {
     flex: 1;
-    min-width: 100px;
-    padding: 0.875rem 0.5rem;
+    min-width: 80px;
+    padding: 0.6rem 0.5rem;
     background: none;
     border: none;
     border-bottom: 3px solid transparent;
